@@ -39,7 +39,7 @@ make run
 ### 1. Create TPU v6e Instance
 ```bash
 gcloud alpha compute tpus tpu-vm create vllm-gemma4-tpu \
-    --type v6e --topology 2x2 \
+    --type v6e --topology 1x1 \
     --project $PROJECT_ID --zone $ZONE --version v2-alpha-tpuv6e
 ```
 
@@ -47,15 +47,21 @@ gcloud alpha compute tpus tpu-vm create vllm-gemma4-tpu \
 ```bash
 sudo docker run -t --rm --name vllm-gemma4 --privileged --net=host \
     -v /dev/shm:/dev/shm --shm-size 10gb \
+    -e HF_HOME=/dev/shm \
     -e HF_TOKEN=$HF_TOKEN \
     vllm/vllm-tpu:nightly \
     vllm serve google/gemma-4-E2B-it \
     --max-model-len 16384 \
-    --tensor-parallel-size 4 \
+    --tensor-parallel-size 1 \
     --disable_chunked_mm_input \
+    --max_num_batched_tokens 4096 \
     --enable-auto-tool-choice \
-    --tool-call-parser gemma4
+    --tool-call-parser gemma4 \
+    --reasoning-parser gemma4
 ```
+
+This mirrors what `startup_script_template.sh` runs on the VM. If you change the
+flags here, change them there too — the template is what an actual deploy uses.
 
 ### 3. Verification
 ```bash

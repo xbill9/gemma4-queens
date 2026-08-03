@@ -1,5 +1,6 @@
 import sys
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # Mocking FastMCP and other dependencies before importing server
@@ -185,12 +186,34 @@ class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
 
     async def test_get_help(self):
         """Test that get_help returns formatted help text containing key configuration parameters."""
-        result = await get_help()
+        fake_tools = [
+            SimpleNamespace(name="zeta_tool", description="Does the zeta thing.\nIgnored second line."),
+            SimpleNamespace(name="alpha_tool", description="Does the alpha thing."),
+        ]
+        with patch("server.mcp.list_tools", new_callable=AsyncMock) as mock_list_tools:
+            mock_list_tools.return_value = fake_tools
+            result = await get_help()
+
         self.assertIn("### 🛠️ TPU Gemma 4 SRE Agent Help & Configuration", result)
         self.assertIn("GOOGLE_CLOUD_PROJECT", result)
         self.assertIn("MODEL_NAME", result)
         self.assertIn("ACCELERATOR_TYPE", result)
         self.assertIn("Available MCP Tools", result)
+
+        # The catalog is generated from the live registry, so registered tools must appear...
+        self.assertIn("- **`alpha_tool`**: Does the alpha thing.", result)
+        self.assertIn("- **`zeta_tool`**: Does the zeta thing.", result)
+        # ...sorted by name, with only the docstring summary line.
+        self.assertLess(result.index("alpha_tool"), result.index("zeta_tool"))
+        self.assertNotIn("Ignored second line.", result)
+
+    async def test_get_help_tolerates_missing_docstring(self):
+        """A tool with no docstring should not break the generated catalog."""
+        with patch("server.mcp.list_tools", new_callable=AsyncMock) as mock_list_tools:
+            mock_list_tools.return_value = [SimpleNamespace(name="bare_tool", description=None)]
+            result = await get_help()
+
+        self.assertIn("- **`bare_tool`**: No description.", result)
 
 
 if __name__ == "__main__":

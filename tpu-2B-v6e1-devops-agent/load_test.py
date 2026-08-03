@@ -10,10 +10,13 @@ import httpx
 async def main():
     parser = argparse.ArgumentParser(description="Load testing script for vLLM endpoint.")
     parser.add_argument(
-        "--url", type=str, default="http://34.46.31.222:8000/v1/completions", help="The vLLM endpoint URL."
+        "--url",
+        type=str,
+        required=True,
+        help="The vLLM endpoint URL, e.g. http://<TPU_VM_IP>:8000/v1/completions (get it with `make endpoint`).",
     )
     parser.add_argument(
-        "--model", type=str, default="google/gemma-4-31B-it", help="The model to use for the load test."
+        "--model", type=str, default="google/gemma-4-E2B-it", help="The model to use for the load test."
     )
     parser.add_argument(
         "--prompt",

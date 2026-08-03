@@ -2,6 +2,7 @@
 import csv
 import os
 
+
 def main():
     csv_file = "grid_benchmark_results.csv"
     if not os.path.exists(csv_file):
@@ -20,7 +21,7 @@ def main():
             c = int(row["concurrency"])
             ctx = int(row["context_len"])
             status = row["status"]
-            
+
             if status == "success":
                 throughput_data[(c, ctx)] = f"{float(row['throughput_req_sec']):.2f}"
                 latency_data[(c, ctx)] = f"{float(row['avg_latency_s']):.3f}s"
@@ -39,7 +40,7 @@ def main():
         lines.append("")
         lines.append("| " + " | ".join(headers) + " |")
         lines.append("| " + " | ".join(["---"] * len(headers)) + " |")
-        
+
         for c in concurrencies:
             row = [f"**{c} Users**"]
             for ctx in contexts:
@@ -64,6 +65,7 @@ def main():
     with open(artifact_file, "w") as f:
         f.write("\n".join(report))
     print(f"💾 Report saved as artifact to: {artifact_file}")
+
 
 if __name__ == "__main__":
     main()

@@ -7,10 +7,10 @@ This project functions as an expert TPU SRE and DevOps Engineer, specialized in 
 
 This project provides an automated DevOps/SRE assistant that leverages **Gemma 4 models self-hosted via vLLM on Cloud TPUs**. It bridges Google Cloud Logging with a private inference endpoint to analyze infrastructure issues and suggest remediations.
 
-## 🟢 Current Status: ONLINE
-The Gemma 4 inference stack is currently deployed and active on TPU v6e-1.
-*   **Active Endpoint:** `http://35.222.239.170:8000`
-*   **Model:** `google/gemma-4-E2B-it`
+## Current Deployment
+*   **Model:** `google/gemma-4-E2B-it` on TPU v6e-1 (Trillium).
+*   **Endpoint:** discovered at runtime from the `ACTIVE` Queued Resource — use the
+    `get_vllm_endpoint` tool or `make endpoint`. Do not hardcode an IP.
 
 vLLM recipes
 * https://github.com/AI-Hypercomputer/tpu-recipes/blob/main/inference/trillium/vLLM/Gemma4/README.md
@@ -34,7 +34,7 @@ The MCP server expects a running vLLM instance. Your TPU deployment for the mode
 
 ### 2. Software & API Dependencies
 The agent relies on several Google Cloud services and Python libraries:
-*   **Libraries:** `mcp`, `fastmcp`, `google-cloud-logging`, `google-cloud-secret-manager`, `openai`, and `httpx`.
+*   **Libraries:** `mcp` (FastMCP ships inside it), `google-cloud-logging`, `google-cloud-secret-manager`, `openai`, and `httpx`.
 *   **Permissions:** The service account running the agent needs:
     *   `logging.logEntries.list` (to read logs).
     *   `tpu.nodes.get` and `tpu.nodes.list` (for discovery).
@@ -48,7 +48,7 @@ You can configure the following variables for the MCP server:
 ## Technical Standards
 -   **vLLM API:** OpenAI-compatible endpoint at `/v1/chat/completions`.
 -   **Optimization Flags:**
-    -   `--tensor-parallel-size 4`
+    -   `--tensor-parallel-size 1` (v6e-1 is a single chip)
     -   `--max-model-len 16384`
     -   `--disable_chunked_mm_input`
     -   `--max_num_batched_tokens 4096` (required for multimodal compatibility)
@@ -99,7 +99,7 @@ model_list:
   - model_name: "gemma4-tpu"
     litellm_params:
       model: "openai/google/gemma-4-E2B-it" # Tell LiteLLM it's an OpenAI-style endpoint
-      api_base: "http://35.222.239.170:8000/v1" # Your TPU IP
+      api_base: "http://<TPU_VM_IP>:8000/v1" # Get this from `make endpoint`
       api_key: "none" # vLLM doesn't require a key by default
     router_settings:
       model_group_alias:
@@ -109,7 +109,8 @@ model_list:
         "gemini-1.5-flash": "gemma4-tpu"
         "gemini-1.5-pro": "gemma4-tpu"
 ```
-*Note: The IP `35.222.239.170` matches the Active Deployment in this workspace.*
+*Note: the TPU IP changes every time the Queued Resource is recreated — re-run
+`make endpoint` and update `api_base` before starting the proxy.*
 
 #### 3. Start the LiteLLM Proxy
 Run this in a separate terminal (or in the background):

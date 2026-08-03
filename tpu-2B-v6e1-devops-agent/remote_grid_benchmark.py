@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-import os
 import subprocess
 import time
+
 
 def main():
     ip = "127.0.0.1"
@@ -87,6 +87,7 @@ def main():
                     f.write(f"{c},{ctx},0.0,0.0,error_{type(e).__name__}\n")
 
     print("\n🏁 Sweep completed!")
+
 
 if __name__ == "__main__":
     main()

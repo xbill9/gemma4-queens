@@ -23,8 +23,8 @@ mcp = FastMCP("tpu-2B-v6e1-devops-agent")
 
 # --- Configuration ---
 PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "aisprint-491218")
-ZONE = "europe-west4-a"
-REGION = "europe-west4"
+ZONE = os.getenv("GOOGLE_CLOUD_ZONE", "europe-west4-a")
+REGION = os.getenv("GOOGLE_CLOUD_REGION", "europe-west4")
 MODEL_NAME = os.getenv("MODEL_NAME", "google/gemma-4-E2B-it")
 HF_SECRET_ID = "hf-token"
 # Force GOOGLE_APPLICATION_CREDENTIALS and HOME if missing in environment
@@ -60,6 +60,20 @@ async def run_command(cmd: list[str], timeout: int = 60) -> tuple[int, str, str]
         return -1, "", f"Timeout after {timeout}s"
     except Exception as e:
         return -1, "", str(e)
+
+
+async def _render_tool_catalog() -> str:
+    """Renders the live tool list as markdown by introspecting the MCP registry.
+
+    Built from the registered tools rather than a hardcoded list so it can never
+    drift out of sync with the @mcp.tool() decorators below.
+    """
+    lines = []
+    for tool in sorted(await mcp.list_tools(), key=lambda t: t.name):
+        summary = (tool.description or "").strip().splitlines()
+        first_line = summary[0].strip() if summary else "No description."
+        lines.append(f"- **`{tool.name}`**: {first_line}")
+    return "\n".join(lines)
 
 
 async def _get_node_id(resource_id: str) -> Optional[str]:
@@ -902,7 +916,7 @@ async def query_queued_gemma4_with_stats(prompt: str) -> str:
 async def run_vllm_benchmark(
     resource_id: str = "vllm-gemma4-qr",
     backend: str = "vllm",
-    model: str = "google/gemma-4-31B-it",
+    model: str = MODEL_NAME,
     dataset_name: str = "random",
     num_prompts: int = 100,
     random_input_len: int = 1024,
@@ -1166,34 +1180,7 @@ async def get_help() -> str:
         "The server is running in **TPU** mode targeting TPU VM resources.\n\n"
         "---\n\n"
         "### 🧰 Available MCP Tools\n\n"
-        "Below is a summary of the tools exposed by this SRE/DevOps agent:\n\n"
-        "#### 🐳 Infrastructure & Deployment\n"
-        "- **`deploy_vllm`**: Deploys vLLM on a Queued TPU VM resource.\n"
-        "- **`destroy_vllm`**: Deletes the Queued TPU VM resource and VM.\n"
-        "- **`status_vllm`**: Checks the status of the Queued TPU VM.\n"
-        "- **`update_vllm_scaling`**: Placeholder for scaling/configuration updates.\n"
-        "- **`get_vllm_deployment_config`**: Generates the gcloud command for Queued Resource creation.\n"
-        "- **`get_vllm_tpu_deployment_config`**: Generates Kubernetes/GKE manifest for TPU.\n\n"
-        "#### 📊 Model Management\n"
-        "- **`save_hf_token`**: Securely saves a Hugging Face API token to Secret Manager.\n"
-        "- **`get_vertex_ai_model_copy_instructions`**: Instructions to copy model from Vertex AI Model Garden to GCS.\n"
-        "- **`get_huggingface_model_copy_instructions`**: Instructions to download model from Hugging Face and upload to GCS.\n"
-        "- **`get_huggingfacehub_download_path`**: Resolves local cache path using huggingface_hub.\n\n"
-        "#### 📊 Monitoring & Logs\n"
-        "- **`get_system_status`**: High-level status dashboard of TPU node health and vLLM service.\n"
-        "- **`get_endpoint`**: Verifies connectivity and returns the active service URL.\n"
-        "- **`get_metrics`**: Fetches raw Prometheus metrics from the running vLLM service's /metrics endpoint.\n"
-        "- **`get_vllm_docker_logs`**: Retrieves logs from the vLLM Docker container on the TPU VM.\n"
-        "- **`get_tpu_system_logs`**: Retrieves systemd logs for a specific service from the TPU VM.\n"
-        "- **`get_cloud_logging_logs`**: Fetches logs from Google Cloud Logging for `tpu_worker`.\n"
-        "- **`analyze_cloud_logging`**: Summarizes TPU-related errors using the self-hosted Gemma 4 model.\n"
-        "- **`get_model_details`**: Retrieves detailed information about the running model, vLLM engine, and versions.\n\n"
-        "#### 📈 Diagnostics & Performance\n"
-        "- **`query_queued_gemma4`**: Queries the running Gemma 4 model on the TPU VM.\n"
-        "- **`query_queued_gemma4_with_stats`**: Queries model and provides latency/throughput stats.\n"
-        "- **`verify_model_health`**: Verifies model inference health with a simple prompt.\n"
-        "- **`run_benchmark`**: Runs a performance benchmark suite on the TPU VM.\n"
-        "- **`get_help`**: Provides this help text and summarizes configuration/tools."
+        "Below is a summary of the tools exposed by this SRE/DevOps agent:\n\n" + await _render_tool_catalog()
     )
 
 

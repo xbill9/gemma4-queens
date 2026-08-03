@@ -5,10 +5,11 @@ This project functions as an expert TPU SRE and DevOps Engineer, specialized in 
 
 This project provides an automated DevOps/SRE assistant that leverages **Gemma 4 models self-hosted via vLLM on Cloud TPUs**. It bridges Google Cloud Logging with a private inference endpoint to analyze infrastructure issues and suggest remediations.
 
-## 🟢 Current Status: ONLINE
-The Gemma 4 inference stack is currently deployed and active on TPU v6e-1.
-*   **Active Endpoint:** `http://35.222.239.170:8000`
-*   **Model:** `google/gemma-4-E2B-it`
+## Current Deployment
+*   **Model:** `google/gemma-4-E2B-it` on TPU v6e-1 (Trillium).
+*   **Endpoint:** discovered at runtime — the agent finds the `ACTIVE` Queued Resource,
+    resolves its node IP, and serves on port 8000. Ask the agent for `get_vllm_endpoint`,
+    or run `make endpoint`. Endpoints are ephemeral; don't hardcode them.
 
 ## 🚀 Deployment Requirements
 
@@ -24,7 +25,7 @@ The MCP server expects a running vLLM instance. Your TPU deployment for the mode
 
 ### 2. Software & API Dependencies
 The agent relies on several Google Cloud services and Python libraries:
-*   **Libraries:** `mcp`, `fastmcp`, `google-cloud-logging`, `google-cloud-secret-manager`, `openai`, and `httpx`.
+*   **Libraries:** `mcp` (FastMCP ships inside it), `google-cloud-logging`, `google-cloud-secret-manager`, `openai`, and `httpx`.
 *   **Permissions:** The service account running the agent needs:
     *   `logging.logEntries.list` (to read logs).
     *   `tpu.nodes.get` and `tpu.nodes.list` (for discovery).
@@ -33,12 +34,16 @@ The agent relies on several Google Cloud services and Python libraries:
 ### 3. Environment Variables
 You can configure the following variables for the MCP server:
 *   `GOOGLE_CLOUD_PROJECT`: Your GCP Project ID (defaults to `aisprint-491218`).
+*   `GOOGLE_CLOUD_ZONE`: Zone to provision and discover in (defaults to `europe-west4-a`).
+*   `GOOGLE_CLOUD_REGION`: Region for network resources (defaults to `europe-west4`).
 *   `MODEL_NAME`: The model identifier used by vLLM (defaults to `google/gemma-4-E2B-it`).
+*   `ACCELERATOR_TYPE`: TPU accelerator type (defaults to `v6e-1`).
+*   `TENSOR_PARALLEL_SIZE`: Tensor parallel size (defaults to `1`).
 
 ## Technical Standards
 -   **vLLM API:** OpenAI-compatible endpoint at `/v1/chat/completions`.
 -   **Optimization Flags:**
-    -   `--tensor-parallel-size 4`
+    -   `--tensor-parallel-size 1` (v6e-1 is a single chip)
     -   `--max-model-len 16384`
     -   `--disable_chunked_mm_input`
     -   `--max_num_batched_tokens 4096` (required for multimodal compatibility)
@@ -74,44 +79,19 @@ make run
 
 ## 🛠 Available Tools
 
-The following tools are available via the MCP server:
+The MCP server exposes 31 tools. The full catalog lives in
+[GemmaTools.md](GemmaTools.md), generated straight from the `@mcp.tool()`
+decorators in `server.py` — regenerate it with `make tools`. You can also call
+the `get_help` tool, which builds the same list at runtime.
 
-### Infrastructure & Deployment
-*   **`create_tpu_queued_resource`**: Creates a new TPU Queued Resource (Flex-start VM) in the specified zone.
-*   **`destroy_queued_resource`**: Safely deletes a Queued Resource and its corresponding TPU node.
+Highlights:
+
+*   **`find_tpu`**: Scans zones for available v6e quota and provisions the Queued Resource in the first one that takes it.
 *   **`manage_queued_resource`**: Ensures the primary Queued Resource exists and cleans up redundant ones.
-*   **`get_zones_with_available_quota`**: Gets GCP zones that have available TPU quota for TPU v6e.
-*   **`find_tpu`**: Scans multiple zones sequentially to find and provision a TPU v6e resource.
-*   **`find_gpu`**: Scans the GCP project for available GPU resources (GCE VMs, Cloud Run services, and zones with quota).
-*   **`get_vllm_deployment_config`**: Generates the `gcloud` command for a single-host TPU v6e vLLM deployment.
-*   **`get_vllm_tpu_deployment_config`**: Generates GKE manifests for TPU-based deployments.
-*   **`list_queued_resources`**: Lists all Queued Resources in a specific zone.
-*   **`describe_queued_resource`**: Provides detailed information about a specific Queued Resource.
-*   **`get_reservation_status`**: Checks the lifecycle state and expiry time of a Queued Resource.
-*   **`check_tpu_availability`**: Checks if a Queued Resource has reached the `ACTIVE` state.
-*   **`manage_vllm_docker`**: Manages the vLLM Docker container on the TPU VM (`start`, `stop`, `restart`, `status`, `log`, and `rm` actions).
-*   **`estimate_deployment_cost`**: Estimates the cost of a TPU deployment.
-
-### Observability & Performance
-*   **`get_system_status`**: Provides a high-level dashboard of system, TPU, and vLLM status.
-*   **`get_vllm_endpoint`**: Returns the active vLLM service URL if available.
-*   **`get_deployed_endpoint`**: Returns the raw URL of the active vLLM service.
-*   **`get_metrics`**: Fetches raw Prometheus metrics from the running vLLM service's `/metrics` endpoint.
-*   **`get_vllm_docker_logs`**: Retrieves logs from the vLLM Docker container on the TPU VM.
-*   **`get_tpu_system_logs`**: Retrieves systemd logs for a specific service from the TPU VM.
-*   **`get_cloud_logging_logs`**: Fetches logs from Google Cloud Logging.
-*   **`get_model_details`**: Retrieves detailed information about the running model, vLLM engine, and versions.
-*   **`verify_model_health`**: Runs a deep logic check with latency reporting.
-*   **`run_vllm_benchmark`**: Runs vLLM's internal benchmark tool inside the container on the TPU VM.
-*   **`get_help`**: Provides help text and summarizes the configuration options and all available SRE/DevOps tools.
-*   **`get_active_models`**: Gets the active resource usage via `ollama ps` (if Ollama backend is used).
-*   **`get_model_show_details`**: Gets deep model parameters via `ollama show` (if Ollama backend is used).
-
-### AI & Interaction
-*   **`query_queued_gemma4`**: Queries the self-hosted Gemma 4 model on the active Queued Resource.
-*   **`query_queued_gemma4_with_stats`**: Queries the self-hosted Gemma 4 model and returns detailed performance statistics.
-*   **`analyze_cloud_logging`**: Summarizes TPU-related errors using the self-hosted Gemma 4 model.
-*   **`save_hf_token`**: Securely saves a Hugging Face API token to GCP Secret Manager.
+*   **`manage_vllm_docker`**: Starts, stops, restarts, or inspects the vLLM container on the TPU VM.
+*   **`get_system_status`**: High-level dashboard of Queued Resource state, quota, and vLLM health.
+*   **`query_queued_gemma4_with_stats`**: Queries the self-hosted model and reports latency and throughput.
+*   **`analyze_cloud_logging`**: Summarizes TPU errors from Cloud Logging **using the self-hosted Gemma 4 model** — the agent debugging its own infrastructure.
 
 ## 🌟 Grand Demo
 A standalone demo script is included to showcase the agent's capabilities:

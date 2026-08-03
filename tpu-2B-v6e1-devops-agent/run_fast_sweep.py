@@ -1,8 +1,8 @@
 import asyncio
-import time
 import csv
-import sys
 import statistics
+import time
+
 import httpx
 
 # Configuration
@@ -10,9 +10,11 @@ URL = "http://34.90.235.181:8000/v1/chat/completions"
 MODEL = "google/gemma-4-E2B-it"
 RESULTS_FILE = "grid_benchmark_results.csv"
 
+
 # Generate a prompt of approximately `ctx` words to simulate context length
 def generate_prompt(ctx):
     return "word " * ctx
+
 
 async def send_request(client, semaphore, prompt):
     async with semaphore:
@@ -32,6 +34,7 @@ async def send_request(client, semaphore, prompt):
         except Exception:
             return None
 
+
 async def run_benchmark(concurrency, context_len):
     prompt = generate_prompt(context_len)
     num_requests = max(concurrency, 4)
@@ -40,31 +43,32 @@ async def run_benchmark(concurrency, context_len):
         num_requests = concurrency
 
     semaphore = asyncio.Semaphore(concurrency)
-    
+
     async with httpx.AsyncClient() as client:
         start_time = time.perf_counter()
         tasks = [send_request(client, semaphore, prompt) for _ in range(num_requests)]
         results = await asyncio.gather(*tasks)
         total_time = time.perf_counter() - start_time
-        
-        latencies = [l for l in results if l is not None]
+
+        latencies = [latency for latency in results if latency is not None]
         if not latencies:
             return 0.0, 0.0, "failed"
-            
+
         throughput = len(latencies) / total_time
         avg_latency = statistics.mean(latencies)
         return throughput, avg_latency, "success"
 
+
 async def main():
     print(f"📡 Running fast native sweep against: {URL}")
-    
+
     concurrencies = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
     contexts = [4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384]
-    
+
     with open(RESULTS_FILE, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["concurrency", "context_len", "throughput_req_sec", "avg_latency_s", "status"])
-        
+
     for c in concurrencies:
         for ctx in contexts:
             # Skip combinations exceeding the physical KV cache limits to prevent OOM
@@ -73,17 +77,18 @@ async def main():
                 with open(RESULTS_FILE, "a", newline="") as f:
                     csv.writer(f).writerow([c, ctx, 0.0, 0.0, "skipped_capacity_limit"])
                 continue
-                
+
             print(f"🏃 Concurrency: {c:4d} | Context: {ctx:5d} tokens ... ", end="", flush=True)
             throughput, avg_latency, status = await run_benchmark(c, ctx)
-            
+
             if status == "success":
                 print(f"✅ Success | {throughput:6.2f} req/s | Latency: {avg_latency:6.3f}s")
             else:
-                print(f"❌ Failed")
-                
+                print("❌ Failed")
+
             with open(RESULTS_FILE, "a", newline="") as f:
                 csv.writer(f).writerow([c, ctx, throughput, avg_latency, status])
+
 
 if __name__ == "__main__":
     asyncio.run(main())
