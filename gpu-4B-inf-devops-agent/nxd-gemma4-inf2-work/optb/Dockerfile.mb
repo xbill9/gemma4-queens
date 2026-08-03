@@ -1,0 +1,19 @@
+# TP=2 DEVICE-PREFILL image for Gemma4-E4B on Inferentia2.
+# Bases on the E4B TP image (Neuron SDK 2.23, torch-neuronx 2.8, transformers 5.13,
+# neuronx-distributed, and the E4B model weights already present) and adds ONE serialized
+# weight-sharing NxDModel (prefill+decode buckets, bf16 sharded weights + on-device aliased KV)
+# plus the device-prefill server. The prompt is prefilled ON DEVICE (~0.16s vs ~1.5s host CPU),
+# decode ~39 tok/s. Host computes only embeddings; transformer+head+softcap run on the cores.
+FROM xbill9/gemma4-optb-e4b:tp2-2048
+
+# serialized device-prefill model (bf16, 512/128) — built via tp_mb.py, torch.jit.save of the executor
+COPY mb_e4b_512_bf16.pt /workspace/mb_e4b_512_bf16.pt
+COPY optb_server_mb.py /app/optb_server_mb.py
+
+ENV MODEL_DIR=/workspace/real-gemma4-E4B-it \
+    MB_PATH=/workspace/mb_e4b_512_bf16.pt \
+    KV_MAX=512 KV_BUCKET=128 \
+    NEURON_RT_VISIBLE_CORES=0,1 PORT=8080
+EXPOSE 8080
+# run with: docker run -d --device /dev/neuron0 --ipc=host -p 8080:8080 xbill9/gemma4-optb-e4b:tp2-devprefill-512
+CMD ["python","/app/optb_server_mb.py"]

@@ -1,0 +1,10 @@
+Executing remote command on i-022a852c99168f2eb: docker exec vllm-server ls -la /tmp/nxd_model/ 2>&1
+--- OUTPUT ---
+total 16
+drwxr-xr-x 4 root root 4096 Jun 28 18:11 .
+drwxrwxrwt 1 root root 4096 Jun 28 18:12 ..
+drwxr-xr-x 6 root root 4096 Jun 28 18:11 context_encoding_model
+drwxr-xr-x 6 root root 4096 Jun 28 18:11 token_generation_model
+
+--- STDERR ---
+

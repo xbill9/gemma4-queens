@@ -1,0 +1,35 @@
+# Gemma-4 31B (dense) TP=8 on Inferentia2 (inf2.24xlarge, 8 of 12 cores) — NxD ModelBuilder server.
+#
+# THIN image: the 108 GB compiled model + 62 GB weights are NOT baked (impractical to push/pull as a
+# layer). The entrypoint pulls them from the Hugging Face repo at first container start into /data,
+# then serves. Set HF_REPO_INF to the published inference repo.
+#
+# Bases on the proven E2B image (Neuron SDK 2.23 runtime, torch 2.8 / torch-neuronx, transformers 5.13)
+# and adds neuronx-distributed (ModelBuilder) + huggingface_hub for the runtime artifact pull.
+FROM xbill9/gemma4-optb:latest
+
+# NOTE: pin neuronx-distributed to the version validated on hardware (filled in after the live run).
+ARG NXD_VERSION="0.17.26814"
+RUN pip install --no-cache-dir "huggingface_hub>=0.34" && \
+    pip install --no-cache-dir --extra-index-url https://pip.repos.neuron.amazonaws.com \
+      ${NXD_VERSION:+neuronx-distributed==${NXD_VERSION}} && \
+    if [ -z "${NXD_VERSION}" ]; then pip install --no-cache-dir --extra-index-url https://pip.repos.neuron.amazonaws.com neuronx-distributed; fi
+
+COPY optb_server_tp.py /app/optb_server_tp.py
+COPY tp_mb.py /app/tp_mb.py
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+ENV MODEL_DIR=/data/real-gemma4-31B-it \
+    MB_LOAD=/data/mb_31b_256.pt \
+    TP_DEGREE=8 KV_MAX=256 KV_BUCKET=64 \
+    HF_REPO_INF=xbill9/gemma-4-31B-it-inferentia2 \
+    HF_REPO=google/gemma-4-31B-it \
+    NEURON_RT_VISIBLE_CORES=0-7 PORT=8080 \
+    PYTHONPATH=/app
+EXPOSE 8080
+# run with (needs all 6 neuron devices for 8 cores):
+#   docker run -d --device /dev/neuron0 --device /dev/neuron1 --device /dev/neuron2 \
+#     --device /dev/neuron3 --device /dev/neuron4 --device /dev/neuron5 --ipc=host \
+#     -e HF_TOKEN=... -v gemma31b-data:/data -p 8080:8080 xbill9/gemma4-optb-31b:latest
+ENTRYPOINT ["/app/entrypoint.sh"]

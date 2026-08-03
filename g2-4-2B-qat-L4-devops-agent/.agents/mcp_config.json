@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "gpu-devops-agent": {
+      "command": "python3",
+      "args": [
+        "/home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py"
+      ],
+      "env": {
+        "GOOGLE_CLOUD_PROJECT": "aisprint-491218",
+        "GOOGLE_CLOUD_ZONE": "us-east4-c",
+        "MODEL_NAME": "google/gemma-4-E2B-it-qat-w4a16-ct"
+      }
+    }
+  }
+}

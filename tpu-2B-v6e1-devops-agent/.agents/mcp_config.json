@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "tpu-2B-v6e1-devops-agent": {
+      "command": "python3",
+      "args": [
+        "/home/xbill/gemma4-tips/tpu-2B-v6e1-devops-agent/server.py"
+      ],
+      "env": {
+        "GOOGLE_CLOUD_PROJECT": "aisprint-491218",
+        "GOOGLE_CLOUD_REGION": "europe-west4",
+        "GOOGLE_CLOUD_ZONE": "europe-west4-a",
+        "MODEL_NAME": "google/gemma-4-E2B-it",
+        "ACCELERATOR_TYPE": "v6e-1",
+        "TENSOR_PARALLEL_SIZE": "1",
+        "TRIGGER_RELOAD": "1"
+      }
+    }
+  }
+}

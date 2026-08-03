@@ -1,0 +1,33 @@
+# Gemma-4 26B-A4B (MoE, all-int8 SQUEEZE) on a SINGLE inf2.xlarge (2 NeuronCores, 16 GB host) — slim server.
+#
+# THIN image: the ~28 GB of runtime artifacts (neff 26.7 GB + embed_tokens 1.48 GB + cfg) are NOT baked;
+# the entrypoint pulls them from the Hugging Face inference repo into /data on first start, then serves.
+#
+# Base = the AWS Neuron SDK 2.31 vLLM/inference image, which matches the stack the neff was compiled with
+# (neuronx-cc 2.26, neuronx-distributed 0.19, torch 2.9.1, torch-neuronx 2.9). A neff compiled on 2.31 will
+# NOT load on the older 2.23/2.30 runtimes, so the base version must track the compile SDK.
+FROM public.ecr.aws/neuron/pytorch-inference-vllm-neuronx:0.16.0-neuronx-py312-sdk2.31.0-ubuntu24.04
+
+# The base pins transformers==4.57 (no gemma4) via neuronx-distributed-inference and ships no accelerate;
+# the ModelBuilder load path works fine with transformers 5.14.1 (the NxDI==4.57 pin is a benign warning).
+RUN pip install --no-cache-dir "transformers==5.14.1" "accelerate>=1.0" "huggingface_hub>=0.34"
+
+COPY optb_server_sqz.py /app/optb_server_sqz.py
+COPY entrypoint.sqz.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
+ENV MODEL_DIR=/data/cfg \
+    MB_LOAD=/data/sqz_neff.pt \
+    EMBED=/data/embed_tokens.pt \
+    TP_DEGREE=2 KV_MAX=512 KV_BUCKET=128 \
+    HF_REPO_INF=xbill9/gemma-4-26B-A4B-it-inferentia2-xlarge \
+    HF_REPO=google/gemma-4-26B-A4B-it \
+    NEURON_RT_NUM_CORES=2 PORT=8080 \
+    PYTHONPATH=/app
+EXPOSE 8080
+# The 16 GB host needs a swapfile for the one-time neff-load peak (host RSS then stays ~11 GB). On the host:
+#   sudo fallocate -l 40G /swapfile && sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+# Run (one Inferentia2 device = 2 cores):
+#   docker run -d --device /dev/neuron0 --ipc=host -p 8080:8080 \
+#     -e HF_TOKEN=hf_xxx -v gemma26b-xlarge-data:/data xbill9/gemma4-optb-26b:xlarge
+ENTRYPOINT ["/app/entrypoint.sh"]

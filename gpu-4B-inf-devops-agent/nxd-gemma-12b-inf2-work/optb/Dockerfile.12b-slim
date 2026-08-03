@@ -1,0 +1,20 @@
+# SLIM device-prefill image for Gemma-4 12B (encoder-free gemma4_unified) — runs on a single
+# inf2.xlarge (16 GB host RAM), a quarter the price of the inf2.8xlarge. Same accelerator (2
+# NeuronCores) and the SAME compiled device model (mb_12b_256.pt) as :tp2-devprefill-256; only the
+# SERVER differs. optb_server_slim.py constructs the real Gemma4UnifiedTextScaledWordEmbedding and
+# loads ONLY embed_tokens.weight from safetensors (gemma4_unified has no PLE), so the host footprint
+# is ~8 GB instead of the ~24 GB the full from_pretrained model would need. Coherent output, device
+# prefill ~0.1 s, ~15 tok/s decode, validated on an inf2.xlarge.
+FROM xbill9/gemma4-optb-12b:tp2-devprefill-256
+
+COPY optb_server_slim.py /app/optb_server_slim.py
+
+ENV MODEL_DIR=/workspace/real-gemma-12b-it \
+    MB_PATH=/workspace/mb_12b_256.pt \
+    MODEL_NAME=gemma-4-12B-it \
+    KV_MAX=256 KV_BUCKET=64 \
+    NEURON_RT_VISIBLE_CORES=0,1 PORT=8080
+EXPOSE 8080
+# run on an inf2.xlarge:
+#   docker run -d --device /dev/neuron0 --ipc=host -p 8080:8080 xbill9/gemma4-optb-12b:slim-devprefill
+CMD ["python","/app/optb_server_slim.py"]

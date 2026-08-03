@@ -1,0 +1,17 @@
+# SLIM device-prefill image for Gemma-4 E4B — runs on a single inf2.xlarge (16 GB host RAM).
+# Same accelerator as the inf2.8xlarge (2 NeuronCores) but a quarter the price. The device model +
+# weights are identical to :tp2-devprefill-512; only the SERVER differs — optb_server_slim.py loads
+# the host embedding model in bf16 and drops the transformer layers so the host footprint fits 16 GB.
+FROM xbill9/gemma4-optb-e4b:tp2-devprefill-512
+
+COPY optb_server_slim.py /app/optb_server_slim.py
+
+ENV MODEL_DIR=/workspace/real-gemma4-E4B-it \
+    MB_PATH=/workspace/mb_e4b_512_bf16.pt \
+    MODEL_NAME=gemma-4-E4B-it \
+    KV_MAX=512 KV_BUCKET=128 \
+    NEURON_RT_VISIBLE_CORES=0,1 PORT=8080
+EXPOSE 8080
+# run on an inf2.xlarge:
+#   docker run -d --device /dev/neuron0 --ipc=host -p 8080:8080 xbill9/gemma4-optb-e4b:slim-devprefill
+CMD ["python","/app/optb_server_slim.py"]

@@ -1,0 +1,16 @@
+Executing remote command on i-022a852c99168f2eb: docker exec vllm-server ls -la /tmp/nxd_model/token_generation_model/_tp0_bk0/ 2>&1
+--- OUTPUT ---
+total 25208
+drwxr-xr-x 2 root root    4096 Jun 28 18:11 .
+drwxr-xr-x 6 root root    4096 Jun 28 18:11 ..
+-rw-r--r-- 1 root root     584 Jun 28 18:08 command.txt
+-rw-rw-rw- 1 root root     526 Jun 28 18:08 compile_flags.MODULE_b1ca236def49871e0acf+ada15cd3.json
+-rw-r--r-- 1 root root   26888 Jun 28 18:11 global_metric_store.json
+-rw-r--r-- 1 root root 6011904 Jun 28 18:11 graph.neff
+-rw-r--r-- 1 root root  311241 Jun 28 18:11 log-neuron-cc.txt
+-rw-rw-rw- 1 root root 7076586 Jun 28 18:08 model.MODULE_b1ca236def49871e0acf+ada15cd3.hlo_module.pb
+-rw-r--r-- 1 root root 6011904 Jun 28 18:11 model.MODULE_b1ca236def49871e0acf+ada15cd3.neff
+-rw-r--r-- 1 root root 6346883 Jun 28 18:11 wrapped_neff.hlo
+
+--- STDERR ---
+

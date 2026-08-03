@@ -1,0 +1,11 @@
+mcp
+fastmcp
+requests
+python-dotenv
+huggingface_hub
+ruff
+mypy
+types-requests
+openai
+httpx
+boto3

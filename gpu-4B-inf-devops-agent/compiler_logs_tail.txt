@@ -1,0 +1,55 @@
+Executing remote command on i-022a852c99168f2eb: docker exec vllm-server tail -n 50 /tmp/nxd_model/token_generation_model/_tp0_bk0/log-neuron-cc.txt
+--- OUTPUT ---
+│ Total:              │ 5.11GB   │
+│ Model Code          │ 20.25MB  │
+│ Model Constants     │ 116.76KB │
+│ Unallocated Tensors │ 5.09GB   │
+│ Allocated Tensors   │ 3.02MB   │
+│ DMA Ring IO         │ 608B     │
+│ DMA Ring Spill      │ 313.03KB │
+└─────────────────────┴──────────┘
+
+2026-06-28T18:11:40Z INFO 705 [HBMUsage]: Total estimated HBM usage is: 5.11GB
+2026-06-28T18:11:40Z USER 705 [BackendPassManager]: hbm_usage finished after 0.018 seconds
+2026-06-28T18:11:40Z INFO 705 [BackendPassManager]: curr_vmrss:  1507mb, ru_maxrss:  1737mb (delta=0mb)
+2026-06-28T18:11:40Z INFO 705 [BackendPassManager]: Output has 1 module(s), 1 function(s), 30388 memory location(s), 1 block(s), and 182703 instruction(s). Max writers: 287 Max Readers: 4860
+2026-06-28T18:11:40Z USER 705 [BackendPassManager]: Running neff_packager
+2026-06-28T18:11:40Z INFO 705 [BackendPassManager]: Inputs to neff_packager: modules=1 functions=1 allocs=30388 blocks=1 instructions=182703 Max writers: 287 Max Readers: 4860
+2026-06-28T18:11:40Z WARNING 705 [NeffFileWriter]: writeKelp missing file /opt/conda/lib/python3.12/site-packages/neuronxcc/starfish/bin/../lib/MetricMetadata.json
+2026-06-28T18:11:41Z INFO 705 [NeffFileWriter]: Neff will be written to: /tmp/nxd_model/token_generation_model/_tp0_bk0/model.MODULE_b1ca236def49871e0acf+ada15cd3.neff
+2026-06-28T18:11:41Z USER 705 [BackendPassManager]: neff_packager finished after 0.284 seconds
+2026-06-28T18:11:41Z INFO 705 [BackendPassManager]: curr_vmrss:  1508mb, ru_maxrss:  1737mb (delta=0mb)
+2026-06-28T18:11:41Z INFO 705 [BackendPassManager]: Output has 1 module(s), 1 function(s), 30388 memory location(s), 1 block(s), and 182703 instruction(s). Max writers: 287 Max Readers: 4860
+2026-06-28T18:11:41Z INFO 705 [BackendDriver]: HBM scratchpad usage summary (post-allocation):
+┌───────┬───────────┬────────────────────────────────────────────────────────────┬─────────────┐
+│ Core  │ Subgraph  │ Description                                                │ Value       │
+├───────┼───────────┼────────────────────────────────────────────────────────────┼─────────────┤
+│ nc00  │ module    │ Peak scratchpad usage: local                               │ 0.002953 GB │
+│ nc00  │ module    │ Total size of allocated tensors: local                     │ 0.002995 GB │
+│ nc00  │ Max       │ Peak scratchpad usage: local                               │ 0.002953 GB │
+│ nc00  │ Post-link │ Peak scratchpad usage after intermediate tensor allocation │ 0.000000 GB │
+│ nc00  │ Post-link │ Total size of allocated intermediate tensors               │ 0.000000 GB │
+├───────┼───────────┼────────────────────────────────────────────────────────────┼─────────────┤
+│ Total │ Total     │ Peak scratchpad usage                                      │ 0.002953 GB │
+│ Total │ Total     │ Peak scratchpad usage (page-aligned)                       │ 0.500000 GB │
+└───────┴───────────┴────────────────────────────────────────────────────────────┴─────────────┘
+
+2026-06-28T18:11:41Z INFO 705 [BackendDriver]: Peak scratchpad usage: 3170304
+2026-06-28T18:11:41Z INFO 705 [BackendDriver]: Backend completed successfully, tearing down.
+2026-06-28T18:11:41Z INFO 587 [job.WalrusDriver.0]: Job #0 finished
+2026-06-28T18:11:41Z INFO 587 [pipeline.Pipeline.0]: Finished job job.WalrusDriver.0
+2026-06-28T18:11:41Z INFO 587 [pipeline.Pipeline.0]: Starting job job.NeffWrapper.0
+2026-06-28T18:11:41Z INFO 587 [job.NeffWrapper.0]: Job NeffWrapper len(in_states) 1
+2026-06-28T18:11:41Z INFO 587 [job.NeffWrapper.0]: Processing input #0
+2026-06-28T18:11:41Z INFO 587 [job.NeffWrapper.0]: Start NeffWrapper
+2026-06-28T18:11:41Z INFO 587 [job.NeffWrapper.0]: Executing: /opt/conda/lib/python3.12/site-packages/neuronxcc/starfish/bin/hlo-neff-wrapper --hlo /tmp/nxd_model/token_generation_model/_tp0_bk0/model.MODULE_b1ca236def49871e0acf+ada15cd3.hlo_module.pb --neff /tmp/nxd_model/token_generation_model/_tp0_bk0/model.MODULE_b1ca236def49871e0acf+ada15cd3.neff --io_transposes /tmp/nxd_model/token_generation_model/_tp0_bk0/neuronxcc-rxda1d7r/io_transposes.json --output /tmp/nxd_model/token_generation_model/_tp0_bk0/wrapped_neff.hlo --netlist /tmp/nxd_model/token_generation_model/_tp0_bk0/neuronxcc-rxda1d7r/hlo_netlist.json
+2026-06-28T18:11:41Z INFO 587 [job.NeffWrapper.0]: Could not open file: /tmp/nxd_model/token_generation_model/_tp0_bk0/neuronxcc-rxda1d7r/hlo_netlist.json
+
+2026-06-28T18:11:41Z INFO 587 [job.NeffWrapper.0]: Job #0 finished
+2026-06-28T18:11:41Z INFO 587 [pipeline.Pipeline.0]: Finished job job.NeffWrapper.0
+2026-06-28T18:11:41Z INFO 587 [pipeline.Pipeline.0]: Finished pipeline Pipeline
+2026-06-28T18:11:41Z INFO 587 [pipeline.Pipeline.0]: Job #0 finished
+2026-06-28T18:11:41Z INFO 549 [root]: Subcommand returned with exitcode=0
+
+--- STDERR ---
+

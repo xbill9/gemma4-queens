@@ -1,0 +1,24 @@
+# TP=2 + on-device-aliased-KV image for Gemma4-E4B on Inferentia2 — ~32-34 tok/s (both cores).
+# Bases on the proven E2B image (Neuron SDK 2.23 runtime, torch 2.8 / torch-neuronx,
+# transformers 5.13) and adds: neuronx-distributed, the E4B model weights, and the serialized
+# DECODE neff. Prefill runs on the host CPU (one-time seed) so only the decode neff is resident
+# on the cores (avoids the prefill+decode co-residency Allocation Failure).
+FROM xbill9/gemma4-optb:latest
+
+# tensor-parallel runtime (neuronx-distributed); pipeline submodule is shimmed at import in the server
+RUN pip install --no-cache-dir --extra-index-url https://pip.repos.neuron.amazonaws.com \
+      "neuronx-distributed==0.17.26814" || \
+    pip install --no-cache-dir --extra-index-url https://pip.repos.neuron.amazonaws.com neuronx-distributed
+
+# E4B model weights (host fp32 prefill) + serialized TP decode neff (tp_0.pt + tp_1.pt, one/core).
+# Build context must contain these; unpack the neff first: tar xzf tpa_dec_2048.tar.gz (-> ./tpa_dec)
+COPY real-gemma4-31B-it /workspace/real-gemma4-31B-it
+COPY tpa_dec /workspace/tpa_dec
+COPY optb_server_tp.py /app/optb_server_tp.py
+
+ENV MODEL_DIR=/workspace/real-gemma4-31B-it \
+    KV_MAX=2048 KV_BUCKET=512 TPA_DEC=/workspace/tpa_dec \
+    NEURON_RT_VISIBLE_CORES=0,1 PORT=8080
+EXPOSE 8080
+# run with: docker run -d --device /dev/neuron0 --ipc=host -p 8080:8080 xbill9/gemma4-optb-e4b:tp2-2048
+CMD ["python","/app/optb_server_tp.py"]

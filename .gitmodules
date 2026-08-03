@@ -1,0 +1,3 @@
+[submodule "gemma-skills"]
+	path = gemma-skills
+	url = https://github.com/google-gemma/gemma-skills

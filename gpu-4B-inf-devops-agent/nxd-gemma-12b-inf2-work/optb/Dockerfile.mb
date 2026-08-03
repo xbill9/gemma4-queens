@@ -1,0 +1,26 @@
+# TP=2 DEVICE-PREFILL image for Gemma-4 12B (encoder-free gemma4_unified) on Inferentia2.
+# Bases on the E2B Neuron runtime image (SDK 2.23, torch-neuronx 2.8) + transformers 5.13
+# (gemma4_unified) + neuronx-distributed, and adds: the 12B model weights (host embeddings +
+# tokenizer) and ONE serialized weight-sharing NxDModel (prefill+decode buckets, bf16 sharded
+# weights + on-device aliased KV). Prompt is prefilled ON DEVICE (~0.1s); host computes only the
+# scaled word embedding; transformer + head run on both NeuronCores (TP=2). 256-token context.
+FROM xbill9/gemma4-optb:latest
+
+RUN pip install --no-cache-dir --extra-index-url https://pip.repos.neuron.amazonaws.com \
+      "transformers==5.13.0" "neuronx-distributed==0.17.26814" || \
+    pip install --no-cache-dir --extra-index-url https://pip.repos.neuron.amazonaws.com \
+      "transformers==5.13.0" neuronx-distributed
+
+# 12B model weights (host: scaled word embedding + tokenizer) + serialized device-prefill model
+COPY real-gemma-12b-it /workspace/real-gemma-12b-it
+COPY mb_12b_256.pt /workspace/mb_12b_256.pt
+COPY optb_server_mb.py /app/optb_server_mb.py
+
+ENV MODEL_DIR=/workspace/real-gemma-12b-it \
+    MB_PATH=/workspace/mb_12b_256.pt \
+    MODEL_NAME=gemma-4-12B-it \
+    KV_MAX=256 KV_BUCKET=64 \
+    NEURON_RT_VISIBLE_CORES=0,1 PORT=8080
+EXPOSE 8080
+# run with: docker run -d --device /dev/neuron0 --ipc=host -p 8080:8080 xbill9/gemma4-optb-12b:tp2-devprefill-256
+CMD ["python","/app/optb_server_mb.py"]
