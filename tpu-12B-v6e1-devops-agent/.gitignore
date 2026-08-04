@@ -1,0 +1,23 @@
+# Secrets and local config
+.env
+.env.*
+!.env.example
+*.key
+# manage_queued_resource renders this with the HF token embedded in plaintext
+temp_startup_script.sh
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# Logs and editor/OS noise
+*.log
+*.swp
+*.bak
+.DS_Store
+Thumbs.db
