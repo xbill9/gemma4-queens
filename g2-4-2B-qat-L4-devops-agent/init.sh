@@ -59,8 +59,10 @@ if [ -s "$PROJECT_FILE" ]; then
         rm "$PROJECT_FILE"
     fi
 else
-    read -p "Enter Project ID: " PROJECT_ID
-    echo "$PROJECT_ID" > "$HOME/project_id.txt"	
+    # Default matches PROJECT_ID in the Makefile and GOOGLE_CLOUD_PROJECT in server.py.
+    read -p "Enter Project ID [aisprint-491218]: " PROJECT_ID
+    PROJECT_ID="${PROJECT_ID:-aisprint-491218}"
+    echo "$PROJECT_ID" > "$HOME/project_id.txt"
 fi
 
 
@@ -74,14 +76,14 @@ echo -e "\n--- set Project id to $PROJECT_ID ---"
 gcloud config set project "$PROJECT_ID"
 
 echo -e "\n--- Enable APIs ---"
+# Scoped to what this agent actually uses: a GCE g2-standard-4 / NVIDIA L4 VM running
+# vLLM from the upstream Docker Hub image. No TPU, no Cloud Run, no container builds.
 gcloud services enable  compute.googleapis.com \
-                        artifactregistry.googleapis.com \
-                        run.googleapis.com \
-                        cloudbuild.googleapis.com \
                         iam.googleapis.com \
                         aiplatform.googleapis.com \
-                        tpu.googleapis.com \
-                        secretmanager.googleapis.com
+                        secretmanager.googleapis.com \
+                        logging.googleapis.com \
+                        storage.googleapis.com
 
 echo -e "\n--- Grant IAM Permissions to Service Account ---"
 # Get the project number to construct the default compute service account
@@ -97,11 +99,11 @@ if [ -n "$SA_EMAIL" ]; then
         "roles/logging.viewer"
         "roles/monitoring.metricWriter"
         "roles/stackdriver.resourceMetadata.writer"
-        "roles/tpu.admin"
         "roles/secretmanager.secretAccessor"
         "roles/iam.serviceAccountUser"
         "roles/compute.instanceAdmin.v1"
-        "roles/artifactregistry.reader"
+        "roles/storage.objectViewer"
+        "roles/aiplatform.user"
     )
 
     for ROLE in "${ROLES[@]}"; do

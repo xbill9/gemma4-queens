@@ -13,4 +13,8 @@ mypy
 types-requests
 openai
 httpx
+
+# benchmark_sweep.py only
+matplotlib
+# vestigial: only the AWS endpoint-discovery branch of benchmark_sweep.py imports this
 boto3

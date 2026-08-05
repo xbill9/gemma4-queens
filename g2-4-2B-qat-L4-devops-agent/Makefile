@@ -2,9 +2,12 @@
 PROJECT_ID ?= aisprint-491218
 REGION ?= us-east4
 ZONE ?= $(REGION)-a
-BUCKET_NAME ?= $(PROJECT_ID)-bucket
 SERVICE_NAME ?= gpu-2b-qat-l4-devops-agent
 MODEL_PATH ?= gemma-4-E2B-it-qat-w4a16-ct
+
+# Provisioning model: STANDARD (on-demand) or SPOT (~65% cheaper, preemptible)
+PROVISIONING_MODEL ?= STANDARD
+SPOT_FLAGS = $(if $(filter SPOT,$(PROVISIONING_MODEL)),--provisioning-model=SPOT --instance-termination-action=DELETE,)
 
 install:
 	pip install -r requirements.txt
@@ -21,7 +24,7 @@ lint:
 	mypy .
 
 clean:
-	rm -rf __pycache__
+	rm -rf __pycache__ .ruff_cache .mypy_cache
 	find . -type d -name "__pycache__" -exec rm -rf {} +
 
 # Recommended deployment settings for vLLM on GCP GCE with NVIDIA L4 GPU
@@ -64,6 +67,7 @@ deploy-vllm:
 		--machine-type=g2-standard-4 \
 		--accelerator=type=nvidia-l4,count=1 \
 		--maintenance-policy=TERMINATE \
+		$(SPOT_FLAGS) \
 		--image-family=common-cu129-ubuntu-2204-nvidia-580 \
 		--image-project=deeplearning-platform-release \
 		--boot-disk-size=150GB \
@@ -76,6 +80,10 @@ deploy-vllm:
 		--target-tags=vllm-server \
 		--description="Allow port 8080 for vLLM"
 	rm -f startup_script.sh
+
+# Deploy the vLLM inference stack on a Spot instance (preemptible, ~65% cheaper)
+deploy-vllm-spot:
+	@$(MAKE) deploy-vllm PROVISIONING_MODEL=SPOT
 
 # Deploy the vLLM inference stack
 deploy: deploy-vllm
@@ -114,4 +122,4 @@ query:
 		-H "Content-Type: application/json" \
 		-d '{"model": "google/$(MODEL_PATH)", "prompt": "$(PROMPT)", "max_tokens": 128, "temperature": 0.2}' | python3 -m json.tool
 
-.PHONY: install run test clean deploy-vllm deploy destroy-vllm destroy status endpoint query
+.PHONY: install run test lint clean deploy-vllm deploy-vllm-spot deploy destroy-vllm destroy status endpoint query

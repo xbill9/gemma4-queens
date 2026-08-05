@@ -2,7 +2,7 @@
 
 # This script sets various Google Cloud related environment variables.
 # It must be SOURCED to make the variables available in your current shell.
-# Example: source ./set_env.sh
+# Example: source ./set_adc.sh
 
 if [ -z "$CLOUD_SHELL" ]; then
     # Check standard gcloud auth

@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "gce-devops": {
-      "command": "python3",
+      "command": "/home/xbill/.pyenv/versions/3.13.14/bin/python3",
       "args": [
         "/home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py"
       ],

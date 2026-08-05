@@ -11,12 +11,14 @@ from typing import Optional
 
 import httpx
 from dotenv import load_dotenv
+
+# Must run before the imports below, so module constants read the .env values.
 load_dotenv(override=True)
 
-from google.cloud import aiplatform, secretmanager, storage
-from google.cloud import logging as cloud_logging
-from mcp.server.fastmcp import FastMCP
-from openai import AsyncOpenAI
+from google.cloud import aiplatform, secretmanager, storage  # noqa: E402
+from google.cloud import logging as cloud_logging  # noqa: E402
+from mcp.server.fastmcp import FastMCP  # noqa: E402
+from openai import AsyncOpenAI  # noqa: E402
 
 # Setup logging to stderr ONLY to avoid interfering with MCP stdio communication
 logging.basicConfig(
@@ -43,7 +45,7 @@ LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-east4")
 ZONE = os.getenv("GOOGLE_CLOUD_ZONE", "us-east4-a")
 BUCKET_NAME = f"{PROJECT_ID}-bucket"
 
-# The URL of the self-hosted vLLM service on Cloud Run or GCP GCE
+# The URL of the self-hosted vLLM service on the GCE L4 VM
 VLLM_BASE_URL = os.getenv("VLLM_BASE_URL")
 MODEL_NAME = os.getenv("MODEL_NAME", "google/gemma-4-E2B-it-qat-w4a16-ct")
 HF_SECRET_ID = "hf-token"
@@ -82,7 +84,7 @@ async def get_secret(secret_id: str = HF_SECRET_ID) -> Optional[str]:
 
 
 @mcp.tool()
-async def save_hf_token(token: str) -> str:
+async def gce_save_hf_token(token: str) -> str:
     """Securely saves a Hugging Face API token to GCP Secret Manager."""
     saved_gcp = False
 
@@ -114,22 +116,24 @@ async def save_hf_token(token: str) -> str:
         return "❌ Failed to save token to Secret Manager (GCP failed)."
 
 
-DEFAULT_SERVICE_NAME = "gpu-2b-qat-l4-devops-agent"
+DEFAULT_INSTANCE_NAME = "gpu-2b-qat-l4-devops-agent"
 
 
-def discover_vllm_url(service_name: str = DEFAULT_SERVICE_NAME) -> Optional[str]:
+def discover_vllm_url(instance_name: str = DEFAULT_INSTANCE_NAME) -> Optional[str]:
     """Attempts to automatically discover the GCP GCE instance external IP."""
+    global ZONE
+
     if VLLM_BASE_URL:
         logger.info(f"Using provided VLLM_BASE_URL: {VLLM_BASE_URL}")
         return VLLM_BASE_URL
 
-    logger.info(f"Attempting to discover GCP GCE external IP for instance: {service_name}")
+    logger.info(f"Attempting to discover GCP GCE external IP for instance: {instance_name}")
     try:
         cmd = [
             "compute",
             "instances",
             "describe",
-            service_name,
+            instance_name,
             f"--project={PROJECT_ID}",
             f"--zone={ZONE}",
             "--format=value(networkInterfaces[0].accessConfigs[0].natIP)",
@@ -143,8 +147,31 @@ def discover_vllm_url(service_name: str = DEFAULT_SERVICE_NAME) -> Optional[str]
                 return url
             else:
                 logger.warning("⚠️ gcloud returned empty IP for GCE instance.")
+
+        # Fallback: list all instances in the project and search for the matching name
+        logger.info("🔍 Falling back to list instances to locate the VM and its zone dynamically...")
+        list_cmd = [
+            "compute",
+            "instances",
+            "list",
+            f"--project={PROJECT_ID}",
+            f"--filter=name={instance_name}",
+            "--format=value(zone,networkInterfaces[0].accessConfigs[0].natIP)",
+        ]
+        list_process = subprocess.run(["gcloud"] + list_cmd, capture_output=True, text=True, timeout=15)
+        if list_process.returncode == 0 and list_process.stdout.strip():
+            parts = list_process.stdout.strip().split()
+            if len(parts) >= 2:
+                discovered_zone = parts[0].split("/")[-1]
+                ip = parts[1]
+                ZONE = discovered_zone
+                url = f"http://{ip}:8080"
+                logger.info(f"📡 Dynamically discovered GCP GCE vLLM at: {url} (Zone: {ZONE})")
+                return url
+            else:
+                logger.warning(f"⚠️ gcloud list returned incomplete info: {list_process.stdout.strip()}")
         else:
-            logger.warning(f"⚠️ gcloud failed to discover GCE IP (code {process.returncode}): {process.stderr.strip()}")
+            logger.warning(f"⚠️ gcloud list fallback failed: {list_process.stderr.strip()}")
     except subprocess.TimeoutExpired:
         logger.warning("⚠️ Discovery timed out after 15 seconds.")
     except Exception as e:
@@ -178,7 +205,7 @@ def get_auth_token() -> str:
 
 
 async def get_vllm_client() -> AsyncOpenAI:
-    """Initializes and returns an AsyncOpenAI client for the Cloud Run vLLM service."""
+    """Initializes and returns an AsyncOpenAI client for the GCE-hosted vLLM service."""
     vllm_url = get_vllm_url()
     token = get_auth_token()
     headers = {}
@@ -212,14 +239,16 @@ aiplatform.init(project=PROJECT_ID, location=LOCATION)
 
 @mcp.resource("config://vllm-deployment-template")
 def get_deployment_template() -> str:
-    """Returns a base template for AWS EC2 L4 GPU vLLM deployment."""
+    """Returns a base template for GCP GCE L4 GPU vLLM deployment."""
     return """
-# AWS EC2 vLLM Deployment Template
-# Required Instance: g6.2xlarge (1x NVIDIA L4 GPU, 24GB VRAM)
-# Recommended AMI: Deep Learning OSS Nvidia Driver AMI GPU PyTorch (Ubuntu 22.04)
+# GCP GCE vLLM Deployment Template
+# Required Machine Type: g2-standard-4 (1x NVIDIA L4 GPU, 24GB VRAM)
+# Recommended Image: common-cu129-ubuntu-2204-nvidia-580 (deeplearning-platform-release)
 
-InstanceType: g6.2xlarge
-ImageId: ami-012ba162b9cd2729c (us-east-1)
+MachineType: g2-standard-4
+Accelerator: type=nvidia-l4,count=1
+ImageFamily: common-cu129-ubuntu-2204-nvidia-580
+ImageProject: deeplearning-platform-release
 Ports:
   - Container Port: 8080
   - Host Port: 8080
@@ -254,20 +283,20 @@ docker run -d --name vllm-server \\
 
 
 @mcp.tool()
-def get_vllm_endpoint(service_name: str = DEFAULT_SERVICE_NAME) -> Optional[str]:
+def gce_get_vllm_endpoint(instance_name: str = DEFAULT_INSTANCE_NAME) -> Optional[str]:
     """
     Returns the current active vLLM endpoint URL.
 
     Args:
-        service_name: The service name or instance Name tag to describe (defaults to 'gpu-2b-qat-l4-devops-agent').
+        instance_name: The name of the GCE VM instance to describe (defaults to 'gpu-2b-qat-l4-devops-agent').
     """
-    if service_name == DEFAULT_SERVICE_NAME:
+    if instance_name == DEFAULT_INSTANCE_NAME:
         return get_vllm_url()
-    return discover_vllm_url(service_name)
+    return discover_vllm_url(instance_name)
 
 
 @mcp.tool()
-def list_vertex_models() -> str:
+def gce_list_vertex_models() -> str:
     """
     Uses the Vertex AI SDK (part of ADK ecosystem) to list models in the project registry.
     """
@@ -283,7 +312,7 @@ def list_vertex_models() -> str:
 
 
 @mcp.tool()
-def list_bucket_models(bucket_name: Optional[str] = None) -> str:
+def gce_list_bucket_models(bucket_name: Optional[str] = None) -> str:
     """
     Lists the contents of a GCS bucket to check for uploaded model files.
 
@@ -316,7 +345,7 @@ def list_bucket_models(bucket_name: Optional[str] = None) -> str:
 
 
 @mcp.tool()
-async def analyze_cloud_logging(filter_query: str, limit: int = 5) -> str:
+async def gce_analyze_cloud_logging(filter_query: str, limit: int = 5) -> str:
     """
     Fetches and summarizes error logs from Google Cloud Logging.
 
@@ -365,7 +394,7 @@ async def analyze_cloud_logging(filter_query: str, limit: int = 5) -> str:
 
 
 @mcp.tool()
-async def suggest_sre_remediation(error_message: str) -> str:
+async def gce_suggest_sre_remediation(error_message: str) -> str:
     """
     Proposes remediation steps for a specific SRE incident using self-hosted vLLM.
 
@@ -390,7 +419,7 @@ async def suggest_sre_remediation(error_message: str) -> str:
 
 
 @mcp.tool()
-async def query_vllm(prompt: str, max_tokens: int = 512, temperature: float = 0.2) -> str:
+async def gce_query_vllm(prompt: str, max_tokens: int = 512, temperature: float = 0.2) -> str:
     """
     Directly queries the self-hosted vLLM model with a custom prompt.
 
@@ -415,8 +444,8 @@ async def query_vllm(prompt: str, max_tokens: int = 512, temperature: float = 0.
 
 
 @mcp.tool()
-def get_vllm_deployment_config(
-    service_name: str = DEFAULT_SERVICE_NAME,
+def gce_get_vllm_deployment_config(
+    instance_name: str = DEFAULT_INSTANCE_NAME,
     model_path: str = "google/gemma-4-E2B-it-qat-w4a16-ct",
     zone: str = ZONE,
     gpu_memory_utilization: float = 0.95,
@@ -425,7 +454,7 @@ def get_vllm_deployment_config(
     Generates the gcloud compute command and startup script to deploy vLLM to a GCP GCE g2-standard-4 instance (NVIDIA L4).
 
     Args:
-        service_name: The name of the GCE VM instance.
+        instance_name: The name of the GCE VM instance.
         model_path: Hugging Face repo ID or GCS URI of the model.
         zone: GCP zone for the deployment.
         gpu_memory_utilization: The fraction of GPU VRAM to use for KV cache (default: 0.95).
@@ -469,13 +498,13 @@ docker run -d --name vllm-server \\
 """
 
     gcloud_cmd = (
-        f"gcloud compute instances create {service_name} \\\n"
+        f"gcloud compute instances create {instance_name} \\\n"
         f"  --project={PROJECT_ID} \\\n"
         f"  --zone={zone} \\\n"
         f"  --machine-type=g2-standard-4 \\\n"
         f"  --accelerator=type=nvidia-l4,count=1 \\\n"
         f"  --maintenance-policy=TERMINATE \\\n"
-        f"  --image-family=common-cu121-debian-11-py310 \\\n"
+        f"  --image-family=common-cu129-ubuntu-2204-nvidia-580 \\\n"
         f"  --image-project=deeplearning-platform-release \\\n"
         f"  --boot-disk-size=150GB \\\n"
         f"  --boot-disk-type=pd-balanced \\\n"
@@ -506,8 +535,8 @@ docker run -d --name vllm-server \\
 
 
 @mcp.tool()
-async def deploy_vllm(
-    service_name: str = DEFAULT_SERVICE_NAME,
+async def gce_deploy_vllm(
+    instance_name: str = DEFAULT_INSTANCE_NAME,
     model_path: str = "google/gemma-4-E2B-it-qat-w4a16-ct",
     zone: str = ZONE,
 ) -> str:
@@ -515,7 +544,7 @@ async def deploy_vllm(
     Deploys vLLM to GCP GCE g2-standard-4 (NVIDIA L4) VM instance.
 
     Args:
-        service_name: Name of the GCE VM instance.
+        instance_name: Name of the GCE VM instance.
         model_path: Hugging Face repo ID or GCS URI.
         zone: GCP zone to launch the VM in.
     """
@@ -571,7 +600,7 @@ docker run -d --name vllm-server \\
                 "compute",
                 "instances",
                 "create",
-                service_name,
+                instance_name,
                 f"--project={PROJECT_ID}",
                 f"--zone={zone}",
                 "--machine-type=g2-standard-4",
@@ -604,7 +633,7 @@ docker run -d --name vllm-server \\
         )
 
         return (
-            f"🚀 Successfully requested GCP GCE g2-standard-4 Instance deployment for service '{service_name}' in zone '{zone}'.\n"
+            f"🚀 Successfully requested GCP GCE g2-standard-4 Instance deployment for service '{instance_name}' in zone '{zone}'.\n"
             f"Machine Type: `g2-standard-4`\n"
             f"Accelerator: `1x NVIDIA L4 (24GB VRAM)`\n"
             f"Please wait a few minutes for the instance to initialize, install drivers/Docker, and start the container."
@@ -617,8 +646,8 @@ docker run -d --name vllm-server \\
 
 
 @mcp.tool()
-async def start_gce(
-    service_name: str = DEFAULT_SERVICE_NAME,
+async def gce_start(
+    instance_name: str = DEFAULT_INSTANCE_NAME,
     model_path: str = "google/gemma-4-E2B-it-qat-w4a16-ct",
     zone: str = ZONE,
 ) -> str:
@@ -626,7 +655,7 @@ async def start_gce(
     Starts an existing GCE instance, or provisions a new one if none exists.
 
     Args:
-        service_name: Name of the GCE VM instance.
+        instance_name: Name of the GCE VM instance.
         model_path: Model ID (used if provisioning a new instance).
         zone: GCP zone for the VM.
     """
@@ -635,7 +664,7 @@ async def start_gce(
             "compute",
             "instances",
             "describe",
-            service_name,
+            instance_name,
             f"--project={PROJECT_ID}",
             f"--zone={zone}",
             "--format=value(status)",
@@ -646,77 +675,85 @@ async def start_gce(
         status = stdout.strip()
         if status in ["TERMINATED", "STOPPED"]:
             code_start, stdout_start, stderr_start = await run_gcloud(
-                ["compute", "instances", "start", service_name, f"--project={PROJECT_ID}", f"--zone={zone}", "--quiet"]
+                ["compute", "instances", "start", instance_name, f"--project={PROJECT_ID}", f"--zone={zone}", "--quiet"]
             )
             if code_start == 0:
-                return f"🚀 Successfully started existing GCE instance '{service_name}' in zone '{zone}'."
+                return f"🚀 Successfully started existing GCE instance '{instance_name}' in zone '{zone}'."
             else:
-                return f"Failed to start GCE instance '{service_name}':\nError: {stderr_start}"
+                return f"Failed to start GCE instance '{instance_name}':\nError: {stderr_start}"
         else:
-            return f"GCE instance '{service_name}' is already in status: '{status}'."
+            return f"GCE instance '{instance_name}' is already in status: '{status}'."
     else:
-        return await deploy_vllm(service_name=service_name, model_path=model_path, zone=zone)
+        return await gce_deploy_vllm(instance_name=instance_name, model_path=model_path, zone=zone)
 
 
 @mcp.tool()
-async def destroy_vllm(
-    service_name: str = DEFAULT_SERVICE_NAME,
+async def gce_destroy_vllm(
+    instance_name: str = DEFAULT_INSTANCE_NAME,
     zone: str = ZONE,
 ) -> str:
     """
     Deletes the GCP GCE vLLM VM instance.
 
     Args:
-        service_name: Name of the GCE VM instance.
+        instance_name: Name of the GCE VM instance.
         zone: Zone where VM is located.
     """
     code, stdout, stderr = await run_gcloud(
-        ["compute", "instances", "delete", service_name, f"--project={PROJECT_ID}", f"--zone={zone}", "--quiet"]
+        ["compute", "instances", "delete", instance_name, f"--project={PROJECT_ID}", f"--zone={zone}", "--quiet"]
     )
 
     if code == 0:
-        return f"🗑️ Successfully deleted GCP GCE instance: {service_name} in zone {zone}."
+        return f"🗑️ Successfully deleted GCP GCE instance: {instance_name} in zone {zone}."
     else:
-        return f"Failed to delete GCE instance {service_name}:\nError: {stderr}"
+        return f"Failed to delete GCE instance {instance_name}:\nError: {stderr}"
 
 
 @mcp.tool()
-async def stop_gce(
-    service_name: str = DEFAULT_SERVICE_NAME,
+async def gce_stop(
+    instance_name: str = DEFAULT_INSTANCE_NAME,
     zone: str = ZONE,
 ) -> str:
     """
     Stops GCP GCE instance.
 
     Args:
-        service_name: Name of the GCE VM instance to stop.
+        instance_name: Name of the GCE VM instance to stop.
         zone: Zone of the instance.
     """
     code, stdout, stderr = await run_gcloud(
-        ["compute", "instances", "stop", service_name, f"--project={PROJECT_ID}", f"--zone={zone}", "--quiet"]
+        ["compute", "instances", "stop", instance_name, f"--project={PROJECT_ID}", f"--zone={zone}", "--quiet"]
     )
 
     if code == 0:
-        return f"🛑 Successfully requested stopping for GCE Instance: {service_name}"
+        return f"🛑 Successfully requested stopping for GCE Instance: {instance_name}"
     else:
-        return f"Failed to stop GCE instance {service_name}:\nError: {stderr}"
+        return f"Failed to stop GCE instance {instance_name}:\nError: {stderr}"
 
 
 @mcp.tool()
-async def status_vllm(service_name: str = DEFAULT_SERVICE_NAME, zone: str = ZONE) -> str:
+async def gce_status_vllm(instance_name: str = DEFAULT_INSTANCE_NAME, zone: str = ZONE) -> str:
     """
-    Checks the status of the GCP GCE instance(s) matching the specified service name.
+    Checks the status of the GCP GCE instance with the specified instance name.
 
     Args:
-        service_name: Name of the instance to check.
+        instance_name: Name of the instance to check.
         zone: Zone of the instance.
     """
     code, stdout, stderr = await run_gcloud(
-        ["compute", "instances", "describe", service_name, f"--project={PROJECT_ID}", f"--zone={zone}", "--format=json"]
+        [
+            "compute",
+            "instances",
+            "describe",
+            instance_name,
+            f"--project={PROJECT_ID}",
+            f"--zone={zone}",
+            "--format=json",
+        ]
     )
 
     if code != 0:
-        return f"Failed to get status for GCE instance '{service_name}':\nError: {stderr}"
+        return f"Failed to get status for GCE instance '{instance_name}':\nError: {stderr}"
 
     try:
         data = json.loads(stdout)
@@ -737,45 +774,53 @@ async def status_vllm(service_name: str = DEFAULT_SERVICE_NAME, zone: str = ZONE
             f"  - **Zone**: `{zone}`\n"
             f"  - **Launch Time**: `{data.get('creationTimestamp')}`\n"
         )
-        return f"### GCP GCE Status for '{service_name}':\n\n{info}"
+        return f"### GCP GCE Status for '{instance_name}':\n\n{info}"
     except Exception as e:
         return f"Failed to parse instance info:\nError: {str(e)}"
 
 
 @mcp.tool()
-async def status_gce(
-    service_name: str = DEFAULT_SERVICE_NAME,
+async def gce_status(
+    instance_name: str = DEFAULT_INSTANCE_NAME,
     zone: str = ZONE,
 ) -> str:
     """
     Checks status of GCP GCE instance.
 
     Args:
-        service_name: Name of the GCE VM instance.
+        instance_name: Name of the GCE VM instance.
         zone: Zone of the instance.
     """
-    return await status_vllm(service_name=service_name, zone=zone)
+    return await gce_status_vllm(instance_name=instance_name, zone=zone)
 
 
 @mcp.tool()
-async def check_vllm(
-    service_name: str = DEFAULT_SERVICE_NAME,
+async def gce_check_vllm(
+    instance_name: str = DEFAULT_INSTANCE_NAME,
     zone: str = ZONE,
 ) -> str:
     """
     Checks the status of the vLLM container and engine running on the GCE instance.
 
     Args:
-        service_name: Name of the GCE VM instance to check.
+        instance_name: Name of the GCE VM instance to check.
         zone: Zone of the instance.
     """
     # 1. Check GCE VM Status
     code, stdout, stderr = await run_gcloud(
-        ["compute", "instances", "describe", service_name, f"--project={PROJECT_ID}", f"--zone={zone}", "--format=json"]
+        [
+            "compute",
+            "instances",
+            "describe",
+            instance_name,
+            f"--project={PROJECT_ID}",
+            f"--zone={zone}",
+            "--format=json",
+        ]
     )
 
     if code != 0:
-        return f"Failed to describe GCE instance '{service_name}':\nError: {stderr}"
+        return f"Failed to describe GCE instance '{instance_name}':\nError: {stderr}"
 
     try:
         data = json.loads(stdout)
@@ -787,7 +832,7 @@ async def check_vllm(
             if access_configs:
                 nat_ip = access_configs[0].get("natIP")
 
-        report = f"### 🖥️ Instance: `{service_name}` ({status})\n"
+        report = f"### 🖥️ Instance: `{instance_name}` ({status})\n"
         if status != "RUNNING":
             report += f"❌ Instance is not running (Current State: `{status}`). Skipping container checks.\n"
             return report
@@ -801,7 +846,7 @@ async def check_vllm(
             [
                 "compute",
                 "ssh",
-                service_name,
+                instance_name,
                 f"--project={PROJECT_ID}",
                 f"--zone={zone}",
                 "--command=docker inspect -f '{{.State.Status}}' vllm-server 2>&1",
@@ -831,23 +876,23 @@ async def check_vllm(
 
 
 @mcp.tool()
-async def update_vllm_scaling(
-    instance_type: str,
-    service_name: str = DEFAULT_SERVICE_NAME,
+async def gce_update_vllm_scaling(
+    machine_type: str,
+    instance_name: str = DEFAULT_INSTANCE_NAME,
     zone: str = ZONE,
 ) -> str:
     """
-    Updates the GCP GCE instance type (scaling vertically) for the vLLM service instance.
+    Updates the GCP GCE machine type (scaling vertically) for the vLLM VM instance.
     Note: The instance must be stopped to change its machine type.
 
     Args:
-        instance_type: The new GCP machine type (e.g. 'g2-standard-8', 'g2-standard-16').
-        service_name: The name of the GCE VM instance to scale.
+        machine_type: The new GCP machine type (e.g. 'g2-standard-8', 'g2-standard-16').
+        instance_name: The name of the GCE VM instance to scale.
         zone: Zone of the instance.
     """
     # 1. Stop instance
     code, stdout, stderr = await run_gcloud(
-        ["compute", "instances", "stop", service_name, f"--project={PROJECT_ID}", f"--zone={zone}", "--quiet"]
+        ["compute", "instances", "stop", instance_name, f"--project={PROJECT_ID}", f"--zone={zone}", "--quiet"]
     )
     if code != 0:
         return f"Failed to stop instance for scaling:\nError: {stderr}"
@@ -858,28 +903,28 @@ async def update_vllm_scaling(
             "compute",
             "instances",
             "set-machine-type",
-            service_name,
+            instance_name,
             f"--project={PROJECT_ID}",
             f"--zone={zone}",
-            f"--machine-type={instance_type}",
+            f"--machine-type={machine_type}",
             "--quiet",
         ]
     )
     if code != 0:
-        return f"Failed to change machine type to {instance_type}:\nError: {stderr}"
+        return f"Failed to change machine type to {machine_type}:\nError: {stderr}"
 
     # 3. Start instance
     code, stdout, stderr = await run_gcloud(
-        ["compute", "instances", "start", service_name, f"--project={PROJECT_ID}", f"--zone={zone}", "--quiet"]
+        ["compute", "instances", "start", instance_name, f"--project={PROJECT_ID}", f"--zone={zone}", "--quiet"]
     )
     if code != 0:
         return f"Failed to restart instance after scaling:\nError: {stderr}"
 
-    return f"🚀 Successfully scaled GCE instance `{service_name}` to `{instance_type}` and restarted it."
+    return f"🚀 Successfully scaled GCE instance `{instance_name}` to `{machine_type}` and restarted it."
 
 
 @mcp.tool()
-def get_vllm_gpu_deployment_config(
+def gce_get_vllm_gpu_deployment_config(
     cluster_name: str = "gpu-cluster", model_name: str = "google/gemma-4-E2B-it-qat-w4a16-ct"
 ) -> str:
     """
@@ -968,7 +1013,7 @@ spec:
 
 
 @mcp.tool()
-def get_vertex_ai_model_copy_instructions(model_name: str = "gemma-4-E2B-it-qat-w4a16-ct") -> str:
+def gce_get_vertex_ai_model_copy_instructions(model_name: str = "gemma-4-E2B-it-qat-w4a16-ct") -> str:
     """
     Provides instructions and commands to transfer Gemma model artifacts from Vertex AI Model Garden to your GCS bucket.
     """
@@ -987,13 +1032,13 @@ To use vLLM with Cloud Storage FUSE without Hugging Face, follow these steps:
    Google occasionally provides a managed GCS path for verified projects. If accessible, you can use:
    `gcloud storage cp -r gs://vertex-ai-models/gemma/{model_name}/* gs://{BUCKET_NAME}/{model_name}/`
 
-Once the artifacts are in your bucket, use `get_vllm_deployment_config` to generate your Cloud Run deployment command.
+Once the artifacts are in your bucket, use `gce_get_vllm_deployment_config` to generate your GCE deployment command.
 """
     return instructions
 
 
 @mcp.tool()
-async def get_huggingfacehub_download_path(
+async def gce_get_huggingfacehub_download_path(
     repo_id: str = "google/gemma-4-E2B-it-qat-w4a16-ct",
 ) -> str:
     """
@@ -1012,7 +1057,7 @@ async def get_huggingfacehub_download_path(
 
 
 @mcp.tool()
-def get_huggingface_model_copy_instructions(
+def gce_get_huggingface_model_copy_instructions(
     repo_id: str = "google/gemma-4-E2B-it-qat-w4a16-ct",
     bucket_name: Optional[str] = None,
 ) -> str:
@@ -1031,7 +1076,7 @@ def get_huggingface_model_copy_instructions(
     instructions = f"""
 ### 📦 Transferring {model_name} from Hugging Face to GCS
 
-To use Hugging Face weights with vLLM on Cloud Run via GCS FUSE, follow these steps:
+To stage Hugging Face weights in GCS for the GCE L4 VM, follow these steps:
 
 #### Option A: Using `huggingface_hub` Python Library (Recommended)
 `huggingface_hub` simplifies the download process and can be run directly from python:
@@ -1055,13 +1100,13 @@ To use Hugging Face weights with vLLM on Cloud Run via GCS FUSE, follow these st
    `gcloud storage cp -r ./{model_name}/* gs://{bucket_name}/{model_name}/`
 
 Once uploaded, you can deploy using:
-`get_vllm_deployment_config(model_path="{model_name}")`
+`gce_get_vllm_deployment_config(model_path="{model_name}")`
 """
     return instructions
 
 
 @mcp.tool()
-def check_gpu_quotas(region: Optional[str] = None) -> str:
+def gce_check_gpu_quotas(region: Optional[str] = None) -> str:
     """
     Checks GPU quotas for a specific Google Cloud region.
 
@@ -1105,8 +1150,8 @@ def check_gpu_quotas(region: Optional[str] = None) -> str:
 
 
 @mcp.tool()
-async def verify_model_health() -> str:
-    """Runs a deep health check with latency reporting on the Cloud Run GPU-hosted model."""
+async def gce_verify_model_health() -> str:
+    """Runs a deep health check with latency reporting on the GCE L4 GPU-hosted model."""
     try:
         client = await get_vllm_client()
         model_name = await get_active_model_name(client)
@@ -1134,9 +1179,9 @@ async def verify_model_health() -> str:
 
 
 @mcp.tool()
-async def query_gemma4(prompt: str) -> str:
-    """Queries the self-hosted Gemma 4 model on Cloud Run."""
-    logger.info(f"Querying Cloud Run model with prompt: '{prompt[:50]}...'")
+async def gce_query_gemma4(prompt: str) -> str:
+    """Queries the self-hosted Gemma 4 model on the GCE L4 VM."""
+    logger.info(f"Querying GCE-hosted model with prompt: '{prompt[:50]}...'")
     try:
         client = await get_vllm_client()
         model_name = await get_active_model_name(client)
@@ -1153,9 +1198,9 @@ async def query_gemma4(prompt: str) -> str:
 
 
 @mcp.tool()
-async def query_gemma4_with_stats(prompt: str) -> str:
+async def gce_query_gemma4_with_stats(prompt: str) -> str:
     """
-    Queries the self-hosted Gemma 4 model on Cloud Run and returns detailed performance statistics.
+    Queries the self-hosted Gemma 4 model on the GCE L4 VM and returns detailed performance statistics.
 
     This tool provides:
     - The full model response.
@@ -1218,8 +1263,8 @@ async def query_gemma4_with_stats(prompt: str) -> str:
 
 
 @mcp.tool()
-async def get_model_details() -> str:
-    """Retrieves detailed information about the running Cloud Run model, engine, and versions."""
+async def gce_get_model_details() -> str:
+    """Retrieves detailed information about the running GCE-hosted model, engine, and versions."""
     report = ""
     try:
         vllm_url = get_vllm_url()
@@ -1257,12 +1302,12 @@ async def get_model_details() -> str:
 
 
 @mcp.tool()
-async def get_system_status(service_name: str = DEFAULT_SERVICE_NAME) -> str:
+async def gce_get_system_status(instance_name: str = DEFAULT_INSTANCE_NAME) -> str:
     """
     Provides a high-level dashboard of GCP GCE VM system status and vLLM health.
 
     Args:
-        service_name: The name of the GCE VM instance.
+        instance_name: The name of the GCE VM instance.
     """
     health = "🔴 Offline"
     url = None
@@ -1288,7 +1333,7 @@ async def get_system_status(service_name: str = DEFAULT_SERVICE_NAME) -> str:
                 "compute",
                 "instances",
                 "describe",
-                service_name,
+                instance_name,
                 f"--project={PROJECT_ID}",
                 f"--zone={ZONE}",
                 "--format=value(status)",
@@ -1297,18 +1342,18 @@ async def get_system_status(service_name: str = DEFAULT_SERVICE_NAME) -> str:
         if code == 0:
             status = stdout.strip()
             if status == "RUNNING":
-                gce_status = f"🟢 Running ({service_name})"
+                gce_status = f"🟢 Running ({instance_name})"
             else:
-                gce_status = f"🔴 {status.capitalize()} ({service_name})"
+                gce_status = f"🔴 {status.capitalize()} ({instance_name})"
         else:
             gce_status = f"🔴 GCE Error ({stderr})"
     except Exception as e:
         gce_status = f"🔴 GCE Error: {str(e)}"
 
     if "🟢" in health:
-        next_step = "Use `query_gemma4` to interact with the model."
+        next_step = "Use `gce_query_gemma4` to interact with the model."
     else:
-        next_step = f"Call `deploy_vllm` to provision/start the GCE instance `{service_name}`."
+        next_step = f"Call `gce_deploy_vllm` to provision/start the GCE instance `{instance_name}`."
 
     return (
         f"### 🌀 GPU vLLM System Status\n"
@@ -1319,12 +1364,12 @@ async def get_system_status(service_name: str = DEFAULT_SERVICE_NAME) -> str:
 
 
 @mcp.tool()
-async def get_endpoint(service_name: str = DEFAULT_SERVICE_NAME) -> str:
+async def gce_get_endpoint(instance_name: str = DEFAULT_INSTANCE_NAME) -> str:
     """
     Returns the active vLLM service URL if available.
 
     Args:
-        service_name: The name of the service or instance Name tag to query.
+        instance_name: The name of the service or instance Name tag to query.
     """
     try:
         url = get_vllm_url()
@@ -1339,18 +1384,18 @@ async def get_endpoint(service_name: str = DEFAULT_SERVICE_NAME) -> str:
             else:
                 return f"🔴 vLLM is configured at {url} but returned status {res.status_code}."
     except Exception as e:
-        return f"🔴 vLLM endpoint check failed: {e}. Try deploying/starting it with `deploy_vllm`."
+        return f"🔴 vLLM endpoint check failed: {e}. Try deploying/starting it with `gce_deploy_vllm`."
 
 
 @mcp.tool()
-async def run_benchmark(
+async def gce_run_benchmark(
     model: Optional[str] = None,
     num_prompts: int = 20,
     random_output_len: int = 128,
     max_concurrency: int = 8,
 ) -> str:
     """
-    Runs a performance/concurrency benchmark sweep against the Cloud Run vLLM GPU endpoint.
+    Runs a performance/concurrency benchmark sweep against the GCE L4 vLLM GPU endpoint.
 
     Args:
         model: Model name to request (defaults to the active model from /v1/models).
@@ -1491,13 +1536,13 @@ async def run_benchmark(
     return summary_str
 
 
-async def fetch_gce_logs(service_name: str, limit: int = 50) -> str:
+async def fetch_gce_logs(instance_name: str, limit: int = 50) -> str:
     """Fetches docker logs from the running GCE instance via gcloud compute ssh."""
     code, stdout, stderr = await run_gcloud(
         [
             "compute",
             "ssh",
-            service_name,
+            instance_name,
             f"--project={PROJECT_ID}",
             f"--zone={ZONE}",
             f"--command=docker logs --tail {limit} vllm-server 2>&1",
@@ -1511,16 +1556,16 @@ async def fetch_gce_logs(service_name: str, limit: int = 50) -> str:
 
 
 @mcp.tool()
-async def analyze_gpu_logs(limit: int = 15, service_name: str = DEFAULT_SERVICE_NAME) -> str:
+async def gce_analyze_gpu_logs(limit: int = 15, instance_name: str = DEFAULT_INSTANCE_NAME) -> str:
     """
     Fetches vLLM logs for the specified service and uses Gemma 4 to analyze them for errors.
 
     Args:
         limit: Number of log entries to fetch.
-        service_name: Name of the GCP GCE VM instance.
+        instance_name: Name of the GCP GCE VM instance.
     """
-    logger.info(f"Fetching GCE logs for instance {service_name}...")
-    raw_logs = await fetch_gce_logs(service_name, limit)
+    logger.info(f"Fetching GCE logs for instance {instance_name}...")
+    raw_logs = await fetch_gce_logs(instance_name, limit)
 
     # Prepare prompt for Gemma
     prompt = f"Analyze the following vLLM docker container logs and provide a high-level summary of critical issues:\n\n{raw_logs}\n\nSummary:"
@@ -1540,7 +1585,7 @@ async def analyze_gpu_logs(limit: int = 15, service_name: str = DEFAULT_SERVICE_
 
 
 @mcp.tool()
-async def get_help() -> str:
+async def gce_get_help() -> str:
     """Provides help text and summarizes the configuration options and all available SRE/DevOps tools for this GCP GCE MCP server."""
     return (
         "### 🛠️ GCP Gemma 4 SRE Agent Help & Configuration\n\n"
@@ -1564,45 +1609,46 @@ async def get_help() -> str:
         "### 🧰 Available MCP Tools\n\n"
         "Below is a summary of the tools exposed by this SRE/DevOps agent:\n\n"
         "#### 🐳 Infrastructure & Deployment\n"
-        "- **`start_gce`**: Starts an existing GCE instance, or provisions a new one if none exists.\n"
-        "- **`status_gce`**: Checks GCE instance status.\n"
-        "- **`stop_gce`**: Stops GCE instance.\n"
-        "- **`check_vllm`**: Checks the status of the vLLM container and engine running on the GCE instance.\n"
-        "- **`deploy_vllm`**: Deploys vLLM to GCP GCE g2-standard-4 (NVIDIA L4) VM instance.\n"
-        "- **`destroy_vllm`**: Deletes the GCP GCE vLLM VM instance.\n"
-        "- **`status_vllm`**: Checks GCE instance status.\n"
-        "- **`update_vllm_scaling`**: Scales GCE instance type vertically.\n"
-        "- **`get_vllm_deployment_config`**: Generates the gcloud compute command and startup script.\n"
-        "- **`get_vllm_gpu_deployment_config`**: Generates a GKE manifest for GPU (NVIDIA L4).\n"
-        "- **`check_gpu_quotas`**: Checks GPU/Accelerator quotas for a region.\n"
-        "- **`get_vllm_endpoint`**: Returns the current active vLLM endpoint URL.\n\n"
+        "- **`gce_start`**: Starts an existing GCE instance, or provisions a new one if none exists.\n"
+        "- **`gce_status`**: Alias for `gce_status_vllm`.\n"
+        "- **`gce_stop`**: Stops GCE instance.\n"
+        "- **`gce_check_vllm`**: Checks the status of the vLLM container and engine running on the GCE instance.\n"
+        "- **`gce_deploy_vllm`**: Deploys vLLM to GCP GCE g2-standard-4 (NVIDIA L4) VM instance.\n"
+        "- **`gce_destroy_vllm`**: Deletes the GCP GCE vLLM VM instance.\n"
+        "- **`gce_status_vllm`**: Reports GCE instance type, state, public IP, zone and launch time.\n"
+        "- **`gce_update_vllm_scaling`**: Scales GCE instance type vertically.\n"
+        "- **`gce_get_vllm_deployment_config`**: Generates the gcloud compute command and startup script.\n"
+        "- **`gce_get_vllm_gpu_deployment_config`**: Generates a GKE manifest for GPU (NVIDIA L4).\n"
+        "- **`gce_check_gpu_quotas`**: Checks GPU/Accelerator quotas for a region.\n"
+        "- **`gce_get_vllm_endpoint`**: Returns the current active vLLM endpoint URL.\n\n"
         "#### 📊 Model Management\n"
-        "- **`list_vertex_models`**: Lists models in the Vertex AI Registry.\n"
-        "- **`list_bucket_models`**: Lists model weights in GCS bucket.\n"
-        "- **`save_hf_token`**: Securely saves a Hugging Face API token to Secret Manager.\n"
-        "- **`get_vertex_ai_model_copy_instructions`**: Instructions to copy model from Vertex AI Model Garden to GCS.\n"
-        "- **`get_huggingface_model_copy_instructions`**: Instructions to download model from Hugging Face and upload to GCS.\n"
-        "- **`get_huggingfacehub_download_path`**: Resolves local cache path using huggingface_hub.\n\n"
+        "- **`gce_list_vertex_models`**: Lists models in the Vertex AI Registry.\n"
+        "- **`gce_list_bucket_models`**: Lists model weights in GCS bucket.\n"
+        "- **`gce_save_hf_token`**: Securely saves a Hugging Face API token to Secret Manager.\n"
+        "- **`gce_get_vertex_ai_model_copy_instructions`**: Instructions to copy model from Vertex AI Model Garden to GCS.\n"
+        "- **`gce_get_huggingface_model_copy_instructions`**: Instructions to download model from Hugging Face and upload to GCS.\n"
+        "- **`gce_get_huggingfacehub_download_path`**: Resolves local cache path using huggingface_hub.\n\n"
         "#### 📊 Monitoring & Status\n"
-        "- **`get_metrics`**: Fetches raw Prometheus metrics from the running vLLM service's /metrics endpoint.\n"
-        "- **`get_system_status`**: Provides a high-level status dashboard of the service and health.\n"
-        "- **`get_endpoint`**: Verifies connectivity and returns the active service URL.\n"
-        "- **`get_model_details`**: Retrieves detailed model metadata and engine state from `/v1/models`.\n"
-        "- **`verify_model_health`**: Deep health check by querying the model with a simple prompt and measuring latency.\n\n"
+        "- **`gce_get_metrics`**: Fetches raw Prometheus metrics from the running vLLM service's /metrics endpoint.\n"
+        "- **`gce_get_system_status`**: Provides a high-level status dashboard of the service and health.\n"
+        "- **`gce_get_endpoint`**: Verifies connectivity and returns the active service URL.\n"
+        "- **`gce_get_model_details`**: Retrieves detailed model metadata and engine state from `/v1/models`.\n"
+        "- **`gce_verify_model_health`**: Deep health check by querying the model with a simple prompt and measuring latency.\n\n"
         "#### 📈 Performance & Benchmarking\n"
-        "- **`run_benchmark`**: Runs performance/concurrency benchmark sweeps against the vLLM GPU endpoint.\n\n"
+        "- **`gce_run_benchmark`**: Runs performance/concurrency benchmark sweeps against the vLLM GPU endpoint.\n\n"
         "#### 💬 Interaction & Diagnostics\n"
-        "- **`query_gemma4`**: Primary tool to query the self-hosted model with standard chat message format.\n"
-        "- **`query_gemma4_with_stats`**: Queries the model and returns streaming performance statistics (TTFT, throughput).\n"
-        "- **`query_vllm`**: Direct text completions querying tool.\n"
-        "- **`analyze_cloud_logging`**: Fetches logs from GCP Logging and analyzes them using the model.\n"
-        "- **`analyze_gpu_logs`**: Fetches service logs and uses Gemma 4 to analyze them for SRE/DevOps errors.\n"
-        "- **`suggest_sre_remediation`**: Suggests remediation plans for SRE errors using the model.\n"
+        "- **`gce_query_gemma4`**: Primary tool to query the self-hosted model with standard chat message format.\n"
+        "- **`gce_query_gemma4_with_stats`**: Queries the model and returns streaming performance statistics (TTFT, throughput).\n"
+        "- **`gce_query_vllm`**: Direct text completions querying tool.\n"
+        "- **`gce_analyze_cloud_logging`**: Fetches logs from GCP Logging and analyzes them using the model.\n"
+        "- **`gce_analyze_gpu_logs`**: Fetches service logs and uses Gemma 4 to analyze them for SRE/DevOps errors.\n"
+        "- **`gce_suggest_sre_remediation`**: Suggests remediation plans for SRE errors using the model.\n"
+        "- **`gce_get_help`**: This help text: configuration options and the full tool list.\n"
     )
 
 
 @mcp.tool()
-async def get_metrics() -> str:
+async def gce_get_metrics() -> str:
     """
     Fetches the Prometheus metrics from the active vLLM service.
     """

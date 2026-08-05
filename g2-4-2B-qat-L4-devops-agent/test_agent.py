@@ -11,37 +11,58 @@ from server import mcp
 
 
 class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
+    EXPECTED_TOOLS = {
+        "gce_analyze_cloud_logging",
+        "gce_analyze_gpu_logs",
+        "gce_check_gpu_quotas",
+        "gce_check_vllm",
+        "gce_deploy_vllm",
+        "gce_destroy_vllm",
+        "gce_get_endpoint",
+        "gce_get_help",
+        "gce_get_huggingface_model_copy_instructions",
+        "gce_get_huggingfacehub_download_path",
+        "gce_get_metrics",
+        "gce_get_model_details",
+        "gce_get_system_status",
+        "gce_get_vertex_ai_model_copy_instructions",
+        "gce_get_vllm_deployment_config",
+        "gce_get_vllm_endpoint",
+        "gce_get_vllm_gpu_deployment_config",
+        "gce_list_bucket_models",
+        "gce_list_vertex_models",
+        "gce_query_gemma4",
+        "gce_query_gemma4_with_stats",
+        "gce_query_vllm",
+        "gce_run_benchmark",
+        "gce_save_hf_token",
+        "gce_start",
+        "gce_status",
+        "gce_status_vllm",
+        "gce_stop",
+        "gce_suggest_sre_remediation",
+        "gce_update_vllm_scaling",
+        "gce_verify_model_health",
+    }
+
     async def test_tools_registered(self):
-        """Verify that the expected tools are registered with FastMCP."""
+        """Verify that exactly the expected tools are registered with FastMCP."""
+        tools = {t.name for t in await mcp.list_tools()}
+        self.assertEqual(tools, self.EXPECTED_TOOLS)
+
+    async def test_tool_names_are_gce_prefixed(self):
+        """Every tool must be `gce_`-prefixed to stay distinct from the sibling TPU/EC2 agents."""
         tools = [t.name for t in await mcp.list_tools()]
-        self.assertIn("analyze_cloud_logging", tools)
-        self.assertIn("suggest_sre_remediation", tools)
-        self.assertIn("get_vllm_deployment_config", tools)
-        self.assertIn("get_vertex_ai_model_copy_instructions", tools)
-        self.assertIn("get_huggingface_model_copy_instructions", tools)
-        self.assertIn("get_huggingfacehub_download_path", tools)
-        self.assertIn("save_hf_token", tools)
-        self.assertIn("list_vertex_models", tools)
-        self.assertIn("list_bucket_models", tools)
-        self.assertIn("deploy_vllm", tools)
-        self.assertIn("destroy_vllm", tools)
-        self.assertIn("status_vllm", tools)
-        self.assertIn("update_vllm_scaling", tools)
-        self.assertIn("check_gpu_quotas", tools)
-        self.assertIn("verify_model_health", tools)
-        self.assertIn("query_gemma4", tools)
-        self.assertIn("query_gemma4_with_stats", tools)
-        self.assertIn("get_model_details", tools)
-        self.assertIn("get_help", tools)
+        self.assertEqual([t for t in tools if not t.startswith("gce_")], [])
 
     @patch("server.run_gcloud")
     async def test_update_vllm_scaling(self, mock_run_gcloud):
-        """Test the update_vllm_scaling tool with mock GCE client."""
-        from server import update_vllm_scaling
+        """Test the gce_update_vllm_scaling tool with mock GCE client."""
+        from server import gce_update_vllm_scaling
 
         mock_run_gcloud.return_value = (0, "", "")
 
-        result = await update_vllm_scaling(instance_type="g2-standard-8", service_name="test-service")
+        result = await gce_update_vllm_scaling(machine_type="g2-standard-8", instance_name="test-service")
 
         # Verify call parameters
         mock_run_gcloud.assert_called()
@@ -50,14 +71,14 @@ class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
     @patch("server.run_gcloud")
     @patch("server.get_secret")
     async def test_deploy_vllm(self, mock_get_secret, mock_run_gcloud):
-        """Test the deploy_vllm tool with mock GCE VM creation."""
-        from server import deploy_vllm
+        """Test the gce_deploy_vllm tool with mock GCE VM creation."""
+        from server import gce_deploy_vllm
 
         mock_get_secret.return_value = "mock-hf-token"
         mock_run_gcloud.return_value = (0, "Created instance test-service", "")
 
-        result = await deploy_vllm(
-            service_name="test-service",
+        result = await gce_deploy_vllm(
+            instance_name="test-service",
             model_path="google/gemma-4-E2B-it-qat-w4a16-ct",
         )
 
@@ -68,20 +89,20 @@ class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
 
     @patch("server.run_gcloud")
     async def test_destroy_vllm(self, mock_run_gcloud):
-        """Test the destroy_vllm tool with mock delete."""
-        from server import destroy_vllm
+        """Test the gce_destroy_vllm tool with mock delete."""
+        from server import gce_destroy_vllm
 
         mock_run_gcloud.return_value = (0, "Deleted instance test-service", "")
 
-        result = await destroy_vllm(service_name="test-service")
+        result = await gce_destroy_vllm(instance_name="test-service")
 
         self.assertIn("Successfully deleted GCP GCE instance: test-service", result)
         mock_run_gcloud.assert_called()
 
     @patch("server.run_gcloud")
     async def test_status_vllm(self, mock_run_gcloud):
-        """Test status_vllm tool with mock describe."""
-        from server import status_vllm
+        """Test gce_status_vllm tool with mock describe."""
+        from server import gce_status_vllm
 
         mock_describe_json = (
             '{"id": "123456789", "status": "RUNNING", "machineType": "zones/us-east4-a/machineTypes/g2-standard-4", '
@@ -90,7 +111,7 @@ class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
         )
         mock_run_gcloud.return_value = (0, mock_describe_json, "")
 
-        result = await status_vllm(service_name="test-service")
+        result = await gce_status_vllm(instance_name="test-service")
         self.assertIn("GCP GCE Status for 'test-service'", result)
         self.assertIn("g2-standard-4", result)
         self.assertIn("RUNNING", result)
@@ -103,9 +124,9 @@ class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
 
     def test_get_huggingface_model_copy_instructions(self):
         """Test the output of the Hugging Face model copy instructions tool."""
-        from server import get_huggingface_model_copy_instructions
+        from server import gce_get_huggingface_model_copy_instructions
 
-        instructions = get_huggingface_model_copy_instructions("test/slug", "test-bucket")
+        instructions = gce_get_huggingface_model_copy_instructions("test/slug", "test-bucket")
         self.assertIn("test/slug", instructions)
         self.assertIn("test-bucket", instructions)
         self.assertIn("slug", instructions)
@@ -114,17 +135,17 @@ class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
 
     def test_get_vertex_ai_model_copy_instructions(self):
         """Test the output of the Vertex AI model copy instructions tool."""
-        from server import get_vertex_ai_model_copy_instructions
+        from server import gce_get_vertex_ai_model_copy_instructions
 
-        instructions = get_vertex_ai_model_copy_instructions("gemma-4-E2B-it-qat-w4a16-ct")
+        instructions = gce_get_vertex_ai_model_copy_instructions("gemma-4-E2B-it-qat-w4a16-ct")
         self.assertIn("gemma-4-E2B-it-qat-w4a16-ct", instructions)
         self.assertIn("Vertex AI Model Garden", instructions)
         self.assertIn("gcloud storage cp", instructions)
 
     @patch("server.storage.Client")
     def test_list_bucket_models_mock(self, mock_storage_client_class):
-        """Test list_bucket_models lists GCS bucket."""
-        from server import list_bucket_models
+        """Test gce_list_bucket_models lists GCS bucket."""
+        from server import gce_list_bucket_models
 
         mock_storage_client = MagicMock()
         mock_storage_client_class.return_value = mock_storage_client
@@ -136,52 +157,52 @@ class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
         mock_blob.size = 1024 * 1024 * 5
         mock_bucket.list_blobs.return_value = [mock_blob]
 
-        result = list_bucket_models("gs://mock-bucket")
+        result = gce_list_bucket_models("gs://mock-bucket")
         self.assertIn("mock-bucket", result)
         self.assertIn("gemma-4-E2B-it-qat-w4a16-ct/config.json", result)
         self.assertIn("5.00 MB", result)
 
     @patch("server.secretmanager.SecretManagerServiceClient")
     async def test_save_hf_token(self, mock_gcp_client_class):
-        """Test save_hf_token tool saves token to GCP Secret Manager."""
-        from server import save_hf_token
+        """Test gce_save_hf_token tool saves token to GCP Secret Manager."""
+        from server import gce_save_hf_token
 
         mock_gcp_client = MagicMock()
         mock_gcp_client_class.return_value = mock_gcp_client
         mock_gcp_client.add_secret_version.return_value = MagicMock(name="projects/test/secrets/hf-token/versions/1")
 
-        result = await save_hf_token("test-token")
+        result = await gce_save_hf_token("test-token")
         self.assertIn("Token saved to GCP Secret Manager", result)
 
     @patch("subprocess.run")
     def test_check_gpu_quotas(self, mock_subprocess_run):
-        """Test check_gpu_quotas tool formats GCP metrics correctly."""
-        from server import check_gpu_quotas
+        """Test gce_check_gpu_quotas tool formats GCP metrics correctly."""
+        from server import gce_check_gpu_quotas
 
         mock_process = MagicMock()
         mock_process.returncode = 0
         mock_process.stdout = '{"quotas": [{"metric": "NVIDIA_L4_GPUS", "limit": 8.0, "usage": 0.0}]}'
         mock_subprocess_run.return_value = mock_process
 
-        result = check_gpu_quotas(region="us-east4")
+        result = gce_check_gpu_quotas(region="us-east4")
         self.assertIn("GCP GPU Quotas for region `us-east4`", result)
         self.assertIn("NVIDIA_L4_GPUS", result)
         self.assertIn("Limit: `8.0`", result)
 
     async def test_get_help(self):
-        """Test get_help returns correct tool and region information."""
-        from server import get_help
+        """Test gce_get_help returns correct tool and region information."""
+        from server import gce_get_help
 
-        result = await get_help()
+        result = await gce_get_help()
         self.assertIn("GCP Gemma 4 SRE Agent Help", result)
-        self.assertIn("deploy_vllm", result)
-        self.assertIn("get_vllm_endpoint", result)
+        self.assertIn("gce_deploy_vllm", result)
+        self.assertIn("gce_get_vllm_endpoint", result)
 
     @patch("server.get_vllm_client")
     @patch("server.get_active_model_name")
     async def test_verify_model_health(self, mock_model_name, mock_client_factory):
-        """Test verify_model_health parses model response and calculates latency."""
-        from server import verify_model_health
+        """Test gce_verify_model_health parses model response and calculates latency."""
+        from server import gce_verify_model_health
 
         mock_model_name.return_value = "test-model-name"
         mock_client = MagicMock()
@@ -204,7 +225,7 @@ class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
         mock_client.chat.completions = mock_chat
         mock_client_factory.return_value = mock_client
 
-        result = await verify_model_health()
+        result = await gce_verify_model_health()
         self.assertIn("Model health check PASSED", result)
         self.assertIn("test-model-name", result)
         self.assertIn("Yes, the model is active and running.", result)
@@ -212,8 +233,8 @@ class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
     @patch("server.get_vllm_client")
     @patch("server.get_active_model_name")
     async def test_query_gemma4(self, mock_model_name, mock_client_factory):
-        """Test query_gemma4 queries the model via chat completions."""
-        from server import query_gemma4
+        """Test gce_query_gemma4 queries the model via chat completions."""
+        from server import gce_query_gemma4
 
         mock_model_name.return_value = "test-model-name"
         mock_client = MagicMock()
@@ -235,14 +256,14 @@ class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
         mock_client.chat.completions = mock_chat
         mock_client_factory.return_value = mock_client
 
-        result = await query_gemma4("Hello")
+        result = await gce_query_gemma4("Hello")
         self.assertEqual(result, "Response from Gemma")
 
     @patch("server.get_vllm_client")
     @patch("server.get_active_model_name")
     async def test_query_gemma4_with_stats(self, mock_model_name, mock_client_factory):
-        """Test query_gemma4_with_stats collects performance metrics."""
-        from server import query_gemma4_with_stats
+        """Test gce_query_gemma4_with_stats collects performance metrics."""
+        from server import gce_query_gemma4_with_stats
 
         mock_model_name.return_value = "test-model-name"
         mock_client = MagicMock()
@@ -272,7 +293,7 @@ class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
         mock_client.chat.completions = mock_chat
         mock_client_factory.return_value = mock_client
 
-        result = await query_gemma4_with_stats("Hello")
+        result = await gce_query_gemma4_with_stats("Hello")
         self.assertIn("Performance Stats", result)
         self.assertIn("test-model-name", result)
         self.assertIn("Hello world!", result)
@@ -284,8 +305,8 @@ class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
     async def test_get_model_details(
         self, mock_httpx_client_class, mock_auth_token, mock_vllm_url, mock_client_factory
     ):
-        """Test get_model_details formats models list and health status."""
-        from server import get_model_details
+        """Test gce_get_model_details formats models list and health status."""
+        from server import gce_get_model_details
 
         mock_vllm_url.return_value = "http://test-url"
         mock_auth_token.return_value = "mock-token"
@@ -317,17 +338,17 @@ class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
         mock_httpx_client.__aenter__.return_value = mock_httpx_client
         mock_httpx_client_class.return_value = mock_httpx_client
 
-        result = await get_model_details()
+        result = await gce_get_model_details()
         self.assertIn("Model Details (http://test-url)", result)
         self.assertIn("test-model-id", result)
         self.assertIn("Healthy", result)
 
     def test_get_vllm_deployment_config_gce(self):
-        """Test get_vllm_deployment_config outputs GCE configuration."""
-        from server import get_vllm_deployment_config
+        """Test gce_get_vllm_deployment_config outputs GCE configuration."""
+        from server import gce_get_vllm_deployment_config
 
-        result = get_vllm_deployment_config(
-            service_name="test-service", model_path="google/gemma-4-E2B-it-qat-w4a16-ct"
+        result = gce_get_vllm_deployment_config(
+            instance_name="test-service", model_path="google/gemma-4-E2B-it-qat-w4a16-ct"
         )
         self.assertIn("GCP GCE g2-standard-4 (NVIDIA L4) Instance vLLM Deployment Config", result)
         self.assertIn("gcloud compute instances create", result)

@@ -34,20 +34,26 @@ Run the server using the native compressed-tensors quantization flag and optimiz
 
 ```bash
 vllm serve google/gemma-4-E2B-it-qat-w4a16-ct \
-    --quantization compressed_tensors \
+    --quantization compressed-tensors \
     --max-model-len 32768 \
     --tensor-parallel-size 1 \
     --dtype bfloat16 \
     --disable-chunked-mm-input \
     --gpu-memory-utilization 0.95 \
-    --kv-cache-dtype fp8
+    --kv-cache-dtype fp8 \
+    --enable-auto-tool-choice \
+    --tool-call-parser gemma4 \
+    --reasoning-parser gemma4
 ```
+
+> The two parser flags are not optional. Dropping either one silently breaks tool calling — the
+> model still responds, but its tool calls are never parsed out.
 
 ### ⚙️ Key vLLM Options & Flags
 
 | Flag | Recommended Setting | Purpose |
 | :--- | :--- | :--- |
-| `--quantization` | `compressed_tensors` | Mandatory for reading the w4a16 ct serialization format. |
+| `--quantization` | `compressed-tensors` | Mandatory for reading the w4a16 ct serialization format. |
 | `--max-model-len` | `32768` | Caps the KV-cache allocation. Pinning this tightly reserves VRAM on L4 GPU. |
 | `--tensor-parallel-size` | `1` | Fits easily onto a single GCE instance with a single GPU (requires approx. 7 GB VRAM). |
 | `--dtype` | `bfloat16` | **Mandatory.** Gemma 4 is natively trained in `bfloat16`. Standard `float16` (FP16) lacks the dynamic range and causes numerical overflow/underflow, resulting in garbled text or tool-calling parser failures. NVIDIA L4 has native hardware Tensor Core support for `bfloat16`. |
@@ -143,15 +149,20 @@ args:
 
 ## 📊 Grid Concurrency & Performance Benchmarks
 
-The self-hosted **Gemma 4 2B QAT** model (`google/gemma-4-E2B-it-qat-w4a16-ct`) was benchmarked on a single **NVIDIA L4 GPU** (GCP GCE VM) across a 2D grid of concurrency levels (1 to 2048 concurrent users) and context sizes (8 to 16,384 tokens):
+The self-hosted **Gemma 4 2B QAT** model (`google/gemma-4-E2B-it-qat-w4a16-ct`) was benchmarked on a single **NVIDIA L4 GPU** (GCP GCE VM) across a 2D grid of concurrency levels (1 to 2048 concurrent users) and context sizes (4 to 16,384 tokens). Run of 2026-07-10.
 
 ### 💡 Key SRE & Performance Insights
-* **Stability Up to Concurrency 512**: The QAT INT4 model maintains **100% request success rate** for context windows up to 2048 tokens and concurrencies up to **512 concurrent users**.
-* **Success Rate Degradation**: At **1024 concurrent users**, the success rate drops slightly for larger context sizes. At **2048 concurrent users**, success rates fall to **~70-74%** for small context windows (8–512 tokens) and drop to **~22%** for the 16K context window under high memory pressure.
-* **Prefill vs. Execution Latency**: For very high concurrencies (1024 and 2048), the average request latency is significantly dominated by queuing and prefill wait times, reaching up to **46.55 seconds** for 16K context size at 2048 concurrency.
-* **The QAT Advantage**: The 2B Standard (bfloat16) model leaves 0 GB of free VRAM for the KV cache on a single L4 GPU, causing stability issues at concurrencies above 8. In contrast, the 2B QAT (w4a16) model frees up **~18 GB of VRAM** for the KV cache, permitting **100% success rate up to 512 concurrent users** (a ~64x improvement in concurrency capacity).
+* **Sub-second latency to concurrency 128**: For context sizes up to 2048 tokens, average latency stays under **1.2s** through 128 concurrent users, and under **0.65s** through 64.
+* **Graceful degradation, not a cliff**: Latency scales roughly linearly with concurrency past 128 — ~1.8s at 256, ~3.7-4.4s at 512, ~8-10s at 1024, ~16-20s at 2048 (small-to-mid contexts). There is no collapse point in the sweep.
+* **Context size dominates at the top end**: The 16K context row is the outlier — 16.45s at 512 concurrency and **37.68s** at 2048, versus 4.35s and 20.39s for a 2048-token context.
+* **Peak throughput ~166 req/s** at short contexts and 256 concurrency; throughput plateaus around 60-90 req/s at high concurrency and falls to ~15 req/s for 16K contexts.
 
-Detailed benchmark metrics can be reviewed in [benchmark_report_summary.md](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/benchmark_report_summary.md).
+> ⚠️ This sweep recorded latency and throughput only — it captured **no success-rate data**, so no claim
+> about request success rate or maximum stable concurrency can be sourced from it. The other benchmark
+> files in this directory (`benchmark_report_gcp.md`, `benchmark_report_summary*.md`,
+> `model_comparison*.md`) describe **12B** models on Cloud Run or AWS EC2 and are not this deployment.
+
+Detailed benchmark metrics can be reviewed in [benchmark_report.md](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/benchmark_report.md).
 
 ---
 
@@ -159,36 +170,41 @@ Detailed benchmark metrics can be reviewed in [benchmark_report_summary.md](file
 
 This agent exposes several tool categories via the Model Context Protocol (MCP):
 - **Deployment & Scaling:** 
-  - [deploy_vllm](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L509)
-  - [destroy_vllm](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L1572)
-  - [status_vllm](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L1573)
-  - [update_vllm_scaling](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L1574)
-  - [get_vllm_deployment_config](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L418)
-  - [get_vllm_gpu_deployment_config](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L619)
-  - [check_gpu_quotas](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L783)
-  - [get_vllm_endpoint](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L237)
+  - [gce_deploy_vllm](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L538)
+  - [gce_destroy_vllm](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L691)
+  - [gce_start](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L649)
+  - [gce_stop](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L713)
+  - [gce_check_vllm](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L798)
+  - [gce_status](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L783)
+  - [gce_status_vllm](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L735)
+  - [gce_update_vllm_scaling](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L879)
+  - [gce_get_vllm_deployment_config](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L447)
+  - [gce_get_vllm_gpu_deployment_config](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L927)
+  - [gce_check_gpu_quotas](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L1109)
+  - [gce_get_vllm_endpoint](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L286)
 - **Model Transfer & Secret Management:** 
-  - [list_vertex_models](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L256)
-  - [list_bucket_models](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L269)
-  - [save_hf_token](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L85)
-  - [get_vertex_ai_model_copy_instructions](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L705)
-  - [get_huggingface_model_copy_instructions](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L760)
-  - [get_huggingfacehub_download_path](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L745)
+  - [gce_list_vertex_models](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L299)
+  - [gce_list_bucket_models](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L315)
+  - [gce_save_hf_token](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L87)
+  - [gce_get_vertex_ai_model_copy_instructions](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L1016)
+  - [gce_get_huggingface_model_copy_instructions](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L1060)
+  - [gce_get_huggingfacehub_download_path](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L1041)
 - **System Monitoring & Health:** 
-  - [get_system_status](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L1260)
-  - [get_endpoint](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L1322)
-  - [get_model_details](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L1221)
-  - [verify_model_health](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L881)
+  - [gce_get_metrics](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L1651)
+  - [gce_get_system_status](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L1305)
+  - [gce_get_endpoint](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L1367)
+  - [gce_get_model_details](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L1266)
+  - [gce_verify_model_health](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L1153)
 - **Performance Benchmarking:** 
-  - [run_benchmark](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L1346)
+  - [gce_run_benchmark](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L1391)
 - **Diagnostics & SRE Remediation:** 
-  - [query_gemma4](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L995)
-  - [query_gemma4_with_stats](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L1014)
-  - [query_vllm](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L392)
-  - [analyze_cloud_logging](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L318)
-  - [analyze_gpu_logs](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L1514)
-  - [suggest_sre_remediation](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L367)
-  - [get_help](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py#L1543)
+  - [gce_query_gemma4](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L1182)
+  - [gce_query_gemma4_with_stats](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L1201)
+  - [gce_query_vllm](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L422)
+  - [gce_analyze_cloud_logging](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L348)
+  - [gce_analyze_gpu_logs](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L1559)
+  - [gce_suggest_sre_remediation](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L397)
+  - [gce_get_help](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py#L1588)
 
 ---
 
@@ -212,7 +228,7 @@ make run
 ---
 
 ## 📚 Key Source Code File Locations
-- **MCP Server entrypoint**: [server.py](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py)
-- **Deployment Manifests & Logic**: Generated by `get_vllm_deployment_config` and `get_vllm_gpu_deployment_config` in [server.py](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/server.py).
-- **Test Suite**: [test_agent.py](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/test_agent.py)
-- **Standalone Grand Demo**: [demo_launcher.py](file:///home/xbill/gemma4-tips/g2-4-2B-qat-L4-devops-agent/demo_launcher.py)
+- **MCP Server entrypoint**: [server.py](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py)
+- **Deployment Manifests & Logic**: Generated by `gce_get_vllm_deployment_config` and `gce_get_vllm_gpu_deployment_config` in [server.py](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py).
+- **Test Suite**: [test_agent.py](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/test_agent.py)
+- **Standalone Grand Demo**: [demo_launcher.py](file:///home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/demo_launcher.py)

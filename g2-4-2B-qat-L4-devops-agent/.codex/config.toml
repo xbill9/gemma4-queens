@@ -1,0 +1,9 @@
+[mcp_servers.gce-devops]
+command = "/home/xbill/.pyenv/versions/3.13.14/bin/python3"
+args = ["/home/xbill/gemma4-queens/g2-4-2B-qat-L4-devops-agent/server.py"]
+
+[mcp_servers.gce-devops.env]
+GOOGLE_CLOUD_PROJECT = "aisprint-491218"
+GOOGLE_CLOUD_LOCATION = "us-east4"
+GOOGLE_CLOUD_ZONE = "us-east4-a"
+MODEL_NAME = "google/gemma-4-E2B-it-qat-w4a16-ct"
