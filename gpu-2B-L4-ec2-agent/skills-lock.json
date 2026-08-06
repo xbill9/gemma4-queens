@@ -1,0 +1,275 @@
+{
+  "version": 1,
+  "skills": {
+    "amazon-aurora-mysql": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/database-skills/amazon-aurora-mysql/SKILL.md",
+      "computedHash": "2e1ccda445d2eac677ae798718e242ffba6cdaf4e30b32db4e4be859b0bd0f83"
+    },
+    "amazon-bedrock": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/amazon-bedrock/SKILL.md",
+      "computedHash": "7b74fe3402d241789763a18b0fd30b8a151147388166b179d455c32fc6e5fb5b"
+    },
+    "amazon-elasticache": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/database-skills/amazon-elasticache/SKILL.md",
+      "computedHash": "9ad08ae122860cd1b243da2e7715e40ae7f3ef227ff87f5553452a6ef0bc1c26"
+    },
+    "aws-amplify": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-amplify/SKILL.md",
+      "computedHash": "360202fbd7b4d6d13b0f8dbabdbc0502b606b6d7b727c65191d4f774811d2416"
+    },
+    "aws-billing-and-cost-management": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-billing-and-cost-management/SKILL.md",
+      "computedHash": "ae87473cabc7f314484dd51056371ed38485dd218d145a1519399b564cfd9b71"
+    },
+    "aws-cdk": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-cdk/SKILL.md",
+      "computedHash": "681d65ddfdb1d5f0454230c09cf3bc01b5dcf4c1484d99a098222b35f125d3ca"
+    },
+    "aws-cleanrooms": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/analytics-skills/aws-cleanrooms/SKILL.md",
+      "computedHash": "768bf5237d5117d356e8a765040cd8f5d3692f012d423a572589cb45f8515bdb"
+    },
+    "aws-cloudformation": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-cloudformation/SKILL.md",
+      "computedHash": "3fbb63b4e6ad7624a1646872fd83aad687758dd3dc3d72b2157faabee72d3622"
+    },
+    "aws-containers": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-containers/SKILL.md",
+      "computedHash": "f81e67c01327d28233e90f4eceb2c1f1d09b8bd41717ba917e5ff828608b911a"
+    },
+    "aws-iam": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-iam/SKILL.md",
+      "computedHash": "e6b01570731dc3a67e26ecaaa5ce0d1d7b54f39f5e041a057f23f3b22c57cd9c"
+    },
+    "aws-lambda-durable-functions": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/serverless-skills/aws-lambda-durable-functions/SKILL.md",
+      "computedHash": "04decab9aed133a4fcf1e82efaa3d16b10829c3adb7265406bd14c185331dda9"
+    },
+    "aws-lambda-managed-instances": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/serverless-skills/aws-lambda-managed-instances/SKILL.md",
+      "computedHash": "5135422590787a69a874b941e14572225da7a6402684028e17ab66d17b40b19f"
+    },
+    "aws-messaging-and-streaming": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-messaging-and-streaming/SKILL.md",
+      "computedHash": "5f67e1a255f200cf4dadbd7f268aad51e7fcfd882fd0ea9182518c207e8371cb"
+    },
+    "aws-sdk-js-v3-usage": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-sdk-js-v3-usage/SKILL.md",
+      "computedHash": "b2c5175e7e8951cb6b2d65ddda09187906feb222cdd97a3757a82f7fa142a873"
+    },
+    "aws-sdk-python-usage": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-sdk-python-usage/SKILL.md",
+      "computedHash": "cdd24e3232b66ff9c25859cd4c540d65fab74e0ddf7d5fd1b39576692463038f"
+    },
+    "aws-sdk-swift-usage": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-sdk-swift-usage/SKILL.md",
+      "computedHash": "bfc13ff6360a40657a4ee62496efd5360f7b0f8324af19f66441621227ca0904"
+    },
+    "aws-serverless": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/core-skills/aws-serverless/SKILL.md",
+      "computedHash": "3a31187c26766bcf4b66f9649a3e87ad7d5bf8bf4c93b3c0c803ba927ed94300"
+    },
+    "aws-transform": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/migration-and-modernization-skills/aws-transform/SKILL.md",
+      "computedHash": "4255141b6f2003367c7566b1fae210a66a5432457b2ccd6a7b40e2ec4153b836"
+    },
+    "configuring-vpc-endpoints-for-private-aws-service-access": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/networking-and-content-delivery-skills/configuring-vpc-endpoints-for-private-aws-service-access/SKILL.md",
+      "computedHash": "0a895b02873202db74a62c85a834b2b1fd38b352b802553947ef99ada7beee20"
+    },
+    "connecting-lambda-to-api-gateway": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/serverless-skills/connecting-lambda-to-api-gateway/SKILL.md",
+      "computedHash": "10b65d50f69d7da8199912dd5e84d822f7fe285de5873da37a9ae93e1c9c434a"
+    },
+    "connecting-lambda-to-dynamodb": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/serverless-skills/connecting-lambda-to-dynamodb/SKILL.md",
+      "computedHash": "3e3ae2ed61bd53904086a2b1d1feb3901c6fcad557708c9cd02412d4b0f2c497"
+    },
+    "connecting-to-data-source": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/analytics-skills/connecting-to-data-source/SKILL.md",
+      "computedHash": "36f6f1d468f2f7e633e318626f9a63ce3880122ba532597690d832afe5351ba6"
+    },
+    "connecting-vpcs-with-peering": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/networking-and-content-delivery-skills/connecting-vpcs-with-peering/SKILL.md",
+      "computedHash": "b4c4c163a0ea4d6f81eebbf7ddf2ce5faf049527d29452d1a3797a9508ef7cae"
+    },
+    "creating-amazon-aurora-db-cluster-with-instances": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/database-skills/creating-amazon-aurora-db-cluster-with-instances/SKILL.md",
+      "computedHash": "273cbed090f001b894f8f961de3d067ea80b024180cdb2cebe9e8095f60856e5"
+    },
+    "creating-api-gateway-stage": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/serverless-skills/creating-api-gateway-stage/SKILL.md",
+      "computedHash": "69c7b02e7fc6546465944db938d7f45dfe6259e56cd01741010f9ab52489e26b"
+    },
+    "creating-data-lake-table": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/storage-skills/creating-data-lake-table/SKILL.md",
+      "computedHash": "eaab9881b01b12b9a4813c37f3f7f811b8ce47ba3305d8c1c0beac5940acf305"
+    },
+    "creating-ec2-image-builder-pipeline": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/ec2-skills/creating-ec2-image-builder-pipeline/SKILL.md",
+      "computedHash": "4cb45eb47069a68007b55d1df2812f7992dd6119a388b2c4475f9d21632fcb55"
+    },
+    "creating-production-vpc-multi-az": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/networking-and-content-delivery-skills/creating-production-vpc-multi-az/SKILL.md",
+      "computedHash": "cb96a16c0eb595a5b584228383d60f770c5f333a4eee69a6aff8166cd5090d5e"
+    },
+    "creating-secrets-using-best-practices": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/security-and-identity-skills/creating-secrets-using-best-practices/SKILL.md",
+      "computedHash": "effa30432ed8965d7168767b679c1aa45241b46e615a535632c1c9d573600d74"
+    },
+    "debugging-lambda-timeouts": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/serverless-skills/debugging-lambda-timeouts/SKILL.md",
+      "computedHash": "9a87200d1d477847f6346fbc7768ec56b9ec8c1b4cff72a7f90963b831dcbffe"
+    },
+    "developing-applications-on-managed-service-for-apache-flink": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/analytics-skills/developing-applications-on-managed-service-for-apache-flink/SKILL.md",
+      "computedHash": "b816600704479493ff4981e4539d886928247b8cf679aada2578f64d3a21411d"
+    },
+    "enabling-lambda-vpc-internet-access": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/networking-and-content-delivery-skills/enabling-lambda-vpc-internet-access/SKILL.md",
+      "computedHash": "66750feba84bc1341d9597b900cd4064de7e164ea9c22ecae96bbeb193e73a45"
+    },
+    "exploring-data-catalog": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/analytics-skills/exploring-data-catalog/SKILL.md",
+      "computedHash": "2cfb98eb437be9a38d081b32914eea25dbfad13c04c162d5693aea5cc24221f1"
+    },
+    "exporting-rds-to-s3": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/database-skills/exporting-rds-to-s3/SKILL.md",
+      "computedHash": "1e46a9e30a8e175a5e718c4d1c5c8214344e832b6474ce2caa08d0797a6bd86f"
+    },
+    "finding-data-lake-assets": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/analytics-skills/finding-data-lake-assets/SKILL.md",
+      "computedHash": "a4707faa44de667d41c8a5a4346e853120d4aad58a4649b94e4c15e5c0783b3a"
+    },
+    "launching-ec2-instance-with-best-practices": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/ec2-skills/launching-ec2-instance-with-best-practices/SKILL.md",
+      "computedHash": "bbac35ea127c3ecd285c25c89da0a23c47ace16d0a7b359c2e8e5648da6e86d2"
+    },
+    "routing-traffic-with-route53-and-cloudfront": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/networking-and-content-delivery-skills/routing-traffic-with-route53-and-cloudfront/SKILL.md",
+      "computedHash": "b66d1b18cfda2c05279891b7c78f46e952569b6317047f5f99c586beeea2692e"
+    },
+    "securing-s3-buckets": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/storage-skills/securing-s3-buckets/SKILL.md",
+      "computedHash": "52712981f43ac145ce7d328ad372fe234ca7c4a4f31d5df0c4a8c41894ce3ea9"
+    },
+    "setting-up-cloudtrail-multi-region": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/operations-skills/setting-up-cloudtrail-multi-region/SKILL.md",
+      "computedHash": "38fa611637c5ccc710694e37532e10bafcfa6f5b8adcf61c9d2542afa1aa9878"
+    },
+    "setting-up-cloudwatch-alarm-notifications": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/operations-skills/setting-up-cloudwatch-alarm-notifications/SKILL.md",
+      "computedHash": "854264fa9ca3baccf2dd209cafc71962a73c7ee81bfa6d4ccf044d5f7c573be1"
+    },
+    "setting-up-ec2-instance-profiles": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/ec2-skills/setting-up-ec2-instance-profiles/SKILL.md",
+      "computedHash": "b5b96b5aa92931a110f636aa884e4b8f522e37be15c83da5c9174a4fd38ab962"
+    },
+    "storing-and-querying-vectors": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/storage-skills/storing-and-querying-vectors/SKILL.md",
+      "computedHash": "69cc65e65f440f1f172cd0aeb9eb9a75bf0ea192188d854eeab4450cb7a29f4f"
+    },
+    "troubleshooting-application-failures": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/operations-skills/troubleshooting-application-failures/SKILL.md",
+      "computedHash": "114e400bfb7843a6278348b7ebbb5bded968dd4a32236995febd75adf73b074f"
+    },
+    "troubleshooting-efs": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/storage-skills/troubleshooting-efs/SKILL.md",
+      "computedHash": "f78a8026c965dcd9e716c0259b9cffc098959a83eb46b1787e0d241a284a68a2"
+    },
+    "troubleshooting-s3-files": {
+      "source": "aws/agent-toolkit-for-aws",
+      "sourceType": "github",
+      "skillPath": "skills/specialized-skills/storage-skills/troubleshooting-s3-files/SKILL.md",
+      "computedHash": "eadb4b3f99c8bc303ee2213e6594709ccbd903c79c4ecbbe65a5d9f170cc3111"
+    }
+  }
+}

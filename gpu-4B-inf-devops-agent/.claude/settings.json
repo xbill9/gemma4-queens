@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_response.filePath // .tool_input.file_path' | { read -r f; case \"$f\" in *.py) ruff format \"$f\";; esac; } 2>/dev/null || true",
+            "statusMessage": "Formatting Python with ruff..."
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.command' | grep -qE '(make[[:space:]]+deploy|ec2[[:space:]]+run-instances|run_instances|deploy_vllm|start_ec2)' && printf '%s' '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"ask\",\"permissionDecisionReason\":\"COST GUARD: this can launch a billable inf2 EC2 instance. Run status_ec2 first - never more than one instance per service_name per region. Remember destroy_vllm does NOT stop billing; stop_ec2 does.\"}}' || true",
+            "statusMessage": "Checking for billable AWS operations..."
+          }
+        ]
+      }
+    ]
+  }
+}

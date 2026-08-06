@@ -1,0 +1,31 @@
+{
+  "mcpServers": {
+    "gpu-devops-agent": {
+      "command": "python3",
+      "args": [
+        "/home/xbill/gemma4-queens/gpu-2B-L4-ec2-agent/server.py"
+      ],
+      "env": {
+        "AWS_REGION": "us-east-1",
+        "AWS_DEFAULT_REGION": "us-east-1",
+        "AWS_BUCKET_NAME": "vllm-models-bucket",
+        "VLLM_SERVICE_NAME": "gpu-2b-qat-l4-ec2-agent",
+        "VLLM_INSTANCE_PROFILE": "aws-elasticbeanstalk-ec2-role",
+        "HF_SSM_PARAMETER": "/vllm/HF_TOKEN",
+        "HF_SECRET_NAME": "hf_token",
+        "MODEL_NAME": "google/gemma-4-E2B-it-qat-w4a16-ct"
+      }
+    },
+    "aws-mcp": {
+      "command": "uvx",
+      "timeout": 100000,
+      "transport": "stdio",
+      "args": [
+        "mcp-proxy-for-aws==1.6.0",
+        "https://aws-mcp.us-east-1.api.aws/mcp",
+        "--metadata",
+        "AWS_REGION=us-east-1"
+      ]
+    }
+  }
+}

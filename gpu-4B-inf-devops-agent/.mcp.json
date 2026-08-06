@@ -1,9 +1,9 @@
 {
   "mcpServers": {
-    "gpu-devops-agent": {
+    "inf-devops-agent": {
       "command": "bash",
       "args": [
-        "/home/xbill/gemma4-tips-aws/gpu-4B-inf-devops-agent/mcp-run.sh"
+        "/home/xbill/gemma4-queens/gpu-4B-inf-devops-agent/mcp-run.sh"
       ],
       "env": {
         "GOOGLE_CLOUD_PROJECT": "aisprint-491218",

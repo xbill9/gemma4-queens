@@ -22,7 +22,8 @@ logger = logging.getLogger("vllm-devops-agent")
 logger.info("Initializing DevOps Agent MCP Server...")
 
 # Initialize FastMCP server
-mcp = FastMCP("Self-Hosted vLLM DevOps Agent")
+mcp = FastMCP("Inferentia Self-Hosted vLLM DevOps Agent")
+
 
 # Load AWS credentials if .aws_creds exists
 def load_aws_credentials():
@@ -34,16 +35,23 @@ def load_aws_credentials():
                     key, val = line.strip().split("=", 1)
                     os.environ[key] = val
 
+
 load_aws_credentials()
 
 # Patch boto3 to reload credentials dynamically on every client instantiation
 import boto3
+
 _original_boto3_client = boto3.client
+
+
 def patched_boto3_client(*args, **kwargs):
     load_aws_credentials()
     import boto3
+
     boto3.DEFAULT_SESSION = None
     return _original_boto3_client(*args, **kwargs)
+
+
 boto3.client = patched_boto3_client
 
 
@@ -197,11 +205,13 @@ def get_deployment_template() -> str:
     """
     return """
 # AWS EC2 Inferentia Deployment Template (Option B / optb server, NOT vLLM)
-# Instance: inf2.xlarge (16GB host RAM, needs swap) with the :slim image,
+# Instance: inf2.xlarge (16GB host RAM, needs swap) with the :slim-devprefill image,
 #           OR inf2.8xlarge (128GB host RAM) with the :latest image.
+# Real Docker Hub tags: latest, slim-devprefill, tp2-devprefill-512, tp2-2048.
+# There is NO :slim and NO :tp2-slim — those 404 and leave the host with no container.
 # AMI: any Deep Learning Base Neuron AMI (Ubuntu 22.04) — only the Neuron driver + docker are needed.
 
-InstanceType: inf2.8xlarge        # or inf2.xlarge (use the :slim image)
+InstanceType: inf2.8xlarge        # or inf2.xlarge (use the :slim-devprefill image)
 Ports:
   - Container Port: 8080
   - Host Port: 8080
@@ -214,7 +224,7 @@ docker run -d --name gemma-optb \\
   --device /dev/neuron0 \\
   --restart unless-stopped \\
   -p 8080:8080 \\
-  xbill9/gemma4-optb-e4b:latest        # inf2.8xlarge; use xbill9/gemma4-optb-e4b:slim on inf2.xlarge
+  xbill9/gemma4-optb-e4b:latest        # inf2.8xlarge; use :slim-devprefill on inf2.xlarge
 
 # Serves: /v1/chat/completions, /v1/completions, /v1/models, /generate, /health
 """
@@ -231,9 +241,6 @@ def get_vllm_endpoint(service_name: str = DEFAULT_SERVICE_NAME) -> Optional[str]
     if service_name == DEFAULT_SERVICE_NAME:
         return get_vllm_url()
     return discover_vllm_url(service_name)
-
-
-
 
 
 @mcp.tool()
@@ -304,8 +311,7 @@ async def analyze_cloud_logging(filter_query: str, limit: int = 5) -> str:
             stream_name = stream_list[0]["logStreamName"]
             events = logs_client.get_log_events(logGroupName=log_group_name, logStreamName=stream_name, limit=limit)
             log_texts = [
-                f"Timestamp: {ev.get('timestamp')} | Message: {ev.get('message')}"
-                for ev in events.get("events", [])
+                f"Timestamp: {ev.get('timestamp')} | Message: {ev.get('message')}" for ev in events.get("events", [])
             ]
             combined_logs = "\n---\n".join(log_texts)
     except Exception as e:
@@ -385,7 +391,6 @@ async def query_vllm(prompt: str, max_tokens: int = 512, temperature: float = 0.
         return f"Error querying vLLM: {str(e)}"
 
 
-
 def _get_inferentia_user_data(model_path: str, hf_token_expr: str = "", instance_type: str = "inf2.8xlarge") -> str:
     """Cloud-init user-data that deploys the Option B (optb) OpenAI-compatible server.
 
@@ -395,12 +400,15 @@ def _get_inferentia_user_data(model_path: str, hf_token_expr: str = "", instance
     /health on :8080. `model_path`/`hf_token_expr` are unused (the image is self-contained).
     """
     # TP=2 + KV-aliasing build (~59-72 tok/s across both NeuronCores) — the fast default.
-    # tp2-slim = slim host embeddings (bf16, ~6 GB): fits the 16 GB inf2.xlarge AND runs fine on
-    # the big-RAM 8xlarge (just doesn't use the extra RAM), so ONE image works everywhere.
-    # ~73 GB image (fits the 300 GB root below), uses the 48 GB swap for the neff-load peak on
+    # slim-devprefill = slim host embeddings (bf16, ~6 GB): fits the 16 GB inf2.xlarge AND runs fine
+    # on the big-RAM 8xlarge (just doesn't use the extra RAM), so ONE image works everywhere.
+    # ~71 GB image (fits the 300 GB root below), uses the 48 GB swap for the neff-load peak on
     # small hosts, and MUST run with --ipc=host (parallel_model_load). Supersedes the single-core
-    # :slim/:latest (~25 tok/s). For a marginally faster host load on 8xlarge, :tp2-2048 also works.
-    optb_image = "xbill9/gemma4-optb-e4b:tp2-slim"
+    # :latest (~25 tok/s). For a marginally faster host load on 8xlarge, :tp2-2048 also works.
+    # NOTE: the previously-hardcoded `:tp2-slim` does NOT exist on Docker Hub (nor does `:slim`) —
+    # the pull 404s and the host boots with no container. Real tags: latest, slim-devprefill,
+    # tp2-devprefill-512, tp2-2048. Verify with the Docker Hub tags API before changing this.
+    optb_image = "xbill9/gemma4-optb-e4b:slim-devprefill"
 
     user_data = f"""#!/bin/bash
 # Install and start SSM agent (if not present) and add SSH key
@@ -532,9 +540,9 @@ def get_vllm_deployment_config(
     if any(q in model_path.lower() for q in ["qat", "w4a16", "ct"]):
         model_path = "google/gemma-4-E4B-it"
 
-    image_id = "ami-04604f21b81ffbd87" # Fallback for us-east-1
+    image_id = "ami-04604f21b81ffbd87"  # Fallback for us-east-1
 
-    hf_token_expr = '$(aws ssm get-parameter --name /vllm/HF_TOKEN --with-decryption --query Parameter.Value --output text 2>/dev/null || echo \'\')'
+    hf_token_expr = "$(aws ssm get-parameter --name /vllm/HF_TOKEN --with-decryption --query Parameter.Value --output text 2>/dev/null || echo '')"
     user_data = _get_inferentia_user_data(model_path, hf_token_expr, instance_type)
     aws_cmd = (
         f"aws ec2 run-instances \\\n"
@@ -555,7 +563,7 @@ def get_vllm_deployment_config(
         f"#### 3. Prerequisites:\n"
         f"- No HF token needed — the `xbill9/gemma4-optb-e4b` image bakes in the weights + compiled neffs.\n"
         f"- Ensure the security group allows inbound TCP traffic on port `8080`.\n"
-        f"- On `inf2.xlarge` (16GB RAM) the user-data adds swap (required for the neff-load peak) and uses the `:slim` image.\n"
+        f"- On `inf2.xlarge` (16GB RAM) the user-data adds swap (required for the neff-load peak) and uses the `:slim-devprefill` image.\n"
         f"- *Note:* The resolved fallback AMI for AWS Neuron on Ubuntu 22.04 in region `{AWS_REGION}` is `{image_id}`."
     )
 
@@ -635,8 +643,7 @@ async def deploy_vllm(
     image_id = "ami-0fd664467b3cf8dfd" if AWS_REGION == "us-east-1" else "ami-01807ad0e6484b5a8"
     try:
         images_resp = ec2.describe_images(
-            Owners=["amazon"],
-            Filters=[{"Name": "name", "Values": ["*Deep Learning AMI Neuron*Ubuntu 22.04*"]}]
+            Owners=["amazon"], Filters=[{"Name": "name", "Values": ["*Deep Learning AMI Neuron*Ubuntu 22.04*"]}]
         )
         if images_resp.get("Images"):
             sorted_images = sorted(images_resp["Images"], key=lambda x: x["CreationDate"], reverse=True)
@@ -661,10 +668,7 @@ async def deploy_vllm(
         sg_id = None
         try:
             sgs = ec2.describe_security_groups(
-                Filters=[
-                    {"Name": "group-name", "Values": [sg_name]},
-                    {"Name": "vpc-id", "Values": [v_id]}
-                ]
+                Filters=[{"Name": "group-name", "Values": [sg_name]}, {"Name": "vpc-id", "Values": [v_id]}]
             )
             if sgs["SecurityGroups"]:
                 sg_id = sgs["SecurityGroups"][0]["GroupId"]
@@ -699,7 +703,6 @@ async def deploy_vllm(
                 last_error = e
                 continue
 
-        
         # Check for existing available cache volume in this AZ
         cache_volume_id = None
         try:
@@ -707,7 +710,7 @@ async def deploy_vllm(
                 Filters=[
                     {"Name": "tag:Name", "Values": [f"{service_name}-cache"]},
                     {"Name": "availability-zone", "Values": [az]},
-                    {"Name": "status", "Values": ["available"]}
+                    {"Name": "status", "Values": ["available"]},
                 ]
             )
             if v_resp.get("Volumes"):
@@ -742,7 +745,7 @@ async def deploy_vllm(
             "UserData": user_data,
             "TagSpecifications": [
                 {"ResourceType": "instance", "Tags": [{"Key": "Name", "Value": service_name}]},
-                {"ResourceType": "volume", "Tags": [{"Key": "Name", "Value": f"{service_name}-cache"}]}
+                {"ResourceType": "volume", "Tags": [{"Key": "Name", "Value": f"{service_name}-cache"}]},
             ],
             "IamInstanceProfile": {"Name": "aws-elasticbeanstalk-ec2-role"},
             "BlockDeviceMappings": [
@@ -754,7 +757,7 @@ async def deploy_vllm(
                         "Iops": 16000,
                         "Throughput": 1000,
                         "DeleteOnTermination": True,
-                    }
+                    },
                 },
                 {
                     "DeviceName": "/dev/sdf",
@@ -763,9 +766,9 @@ async def deploy_vllm(
                         "VolumeType": "gp3",
                         "Iops": 3000,
                         "Throughput": 125,
-                        "DeleteOnTermination": False, # Preserve cache volume
-                    }
-                }
+                        "DeleteOnTermination": False,  # Preserve cache volume
+                    },
+                },
             ],
         }
         if actual_key_name:
@@ -784,12 +787,12 @@ async def deploy_vllm(
         try:
             instance = ec2.run_instances(**current_run_args)
             inst_id = instance["Instances"][0]["InstanceId"]
-            
+
             if cache_volume_id:
                 try:
                     logger.info(f"Attaching existing volume {cache_volume_id} to {inst_id}...")
-                    ec2.get_waiter('instance_exists').wait(InstanceIds=[inst_id])
-                    ec2.attach_volume(VolumeId=cache_volume_id, InstanceId=inst_id, Device='/dev/sdf')
+                    ec2.get_waiter("instance_exists").wait(InstanceIds=[inst_id])
+                    ec2.attach_volume(VolumeId=cache_volume_id, InstanceId=inst_id, Device="/dev/sdf")
                 except Exception as e:
                     logger.error(f"Failed to attach existing volume {cache_volume_id} to {inst_id}: {e}")
 
@@ -800,8 +803,12 @@ async def deploy_vllm(
                 f"Key Pair: `{key_name}`\n"
                 f"Subnet ID: `{sub_id}` (AZ: {az})\n"
                 f"AMI ID: `{image_id}`\n"
-                + (f"Reusing Cache Volume: `{cache_volume_id}`\n" if cache_volume_id else "Created New Cache Volume (Persistent)\n") +
-                f"Please wait a few minutes for the instance to initialize and pull the vLLM docker image."
+                + (
+                    f"Reusing Cache Volume: `{cache_volume_id}`\n"
+                    if cache_volume_id
+                    else "Created New Cache Volume (Persistent)\n"
+                )
+                + f"Please wait a few minutes for the instance to initialize and pull the vLLM docker image."
             )
         except Exception as e:
             err_msg = str(e)
@@ -914,10 +921,7 @@ async def start_ec2(
     sg_id = None
     try:
         sgs = ec2.describe_security_groups(
-            Filters=[
-                {"Name": "group-name", "Values": [sg_name]},
-                {"Name": "vpc-id", "Values": [vpc_id]}
-            ]
+            Filters=[{"Name": "group-name", "Values": [sg_name]}, {"Name": "vpc-id", "Values": [vpc_id]}]
         )
         if sgs["SecurityGroups"]:
             sg_id = sgs["SecurityGroups"][0]["GroupId"]
@@ -992,7 +996,7 @@ async def start_ec2(
                         "VolumeSize": 300,
                         "VolumeType": "gp3",
                         "DeleteOnTermination": True,
-                    }
+                    },
                 }
             ],
         }
@@ -1094,7 +1098,9 @@ def stop_ec2(
             return f"Failed to search for EC2 instances to stop:\nError: {str(e)}"
 
     if not instance_ids:
-        target = f"Instance ID '{instance_id}'" if instance_id else f"service tag '{service_name or DEFAULT_SERVICE_NAME}'"
+        target = (
+            f"Instance ID '{instance_id}'" if instance_id else f"service tag '{service_name or DEFAULT_SERVICE_NAME}'"
+        )
         return f"No active/pending EC2 instances found to stop matching {target}."
 
     try:
@@ -1183,10 +1189,16 @@ def status_ec2(
                 instances_info.append(info)
 
         if not instances_info:
-            target = f"Instance ID '{instance_id}'" if instance_id else f"service tag '{service_name or DEFAULT_SERVICE_NAME}'"
+            target = (
+                f"Instance ID '{instance_id}'"
+                if instance_id
+                else f"service tag '{service_name or DEFAULT_SERVICE_NAME}'"
+            )
             return f"No EC2 instances found matching {target}."
 
-        target_desc = f"Instance ID '{instance_id}'" if instance_id else f"service tag '{service_name or DEFAULT_SERVICE_NAME}'"
+        target_desc = (
+            f"Instance ID '{instance_id}'" if instance_id else f"service tag '{service_name or DEFAULT_SERVICE_NAME}'"
+        )
         return f"### AWS EC2 Status for {target_desc}:\n\n" + "\n".join(instances_info)
     except Exception as e:
         return f"Failed to get status for EC2 target:\nError: {str(e)}"
@@ -1258,7 +1270,11 @@ async def check_vllm(
             cmd_res = ssm.send_command(
                 InstanceIds=[inst_id],
                 DocumentName="AWS-RunShellScript",
-                Parameters={"commands": ["docker ps -a --filter name=gemma --format '{{.Names}}: {{.Status}}' 2>/dev/null | head -1 | grep . || echo 'no gemma-* container'"]},
+                Parameters={
+                    "commands": [
+                        "docker ps -a --filter name=gemma --format '{{.Names}}: {{.Status}}' 2>/dev/null | head -1 | grep . || echo 'no gemma-* container'"
+                    ]
+                },
             )
             cmd_id = cmd_res["Command"]["CommandId"]
 
@@ -1447,10 +1463,6 @@ spec:
 3. Apply it: `kubectl apply -f vllm-neuron.yaml`.
 """
     return manifest
-
-
-
-
 
 
 @mcp.tool()
@@ -1929,7 +1941,11 @@ async def fetch_ec2_logs(instance_id: str, limit: int = 50) -> str:
         response = ssm.send_command(
             InstanceIds=[instance_id],
             DocumentName="AWS-RunShellScript",
-            Parameters={"commands": [f"CN=$(docker ps -a --filter name=gemma --format '{{{{.Names}}}}' | head -1); docker logs --tail {limit} \"${{CN:-gemma-optb}}\" 2>&1"]},
+            Parameters={
+                "commands": [
+                    f"CN=$(docker ps -a --filter name=gemma --format '{{{{.Names}}}}' | head -1); docker logs --tail {limit} \"${{CN:-gemma-optb}}\" 2>&1"
+                ]
+            },
         )
         command_id = response["Command"]["CommandId"]
 

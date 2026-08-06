@@ -1,0 +1,40 @@
+name: gpu-4B-cloudrun-devops-agent
+
+# Scoped to one sibling project. The other agent directories in this repo are
+# independent and are not built by this workflow.
+on:
+  push:
+    paths:
+      - "gpu-4B-cloudrun-devops-agent/**"
+      - ".github/workflows/gpu-4B-cloudrun-devops-agent.yml"
+  pull_request:
+    paths:
+      - "gpu-4B-cloudrun-devops-agent/**"
+      - ".github/workflows/gpu-4B-cloudrun-devops-agent.yml"
+  workflow_dispatch:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gpu-4B-cloudrun-devops-agent
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+          cache-dependency-path: gpu-4B-cloudrun-devops-agent/requirements.txt
+
+      - name: Install dependencies
+        run: make install
+
+      # No GCP credentials needed: the tests mock subprocess and the OpenAI/httpx
+      # clients, and server.py builds no Google Cloud client at import time.
+      - name: Lint (ruff + mypy)
+        run: make lint
+
+      - name: Test
+        run: make test

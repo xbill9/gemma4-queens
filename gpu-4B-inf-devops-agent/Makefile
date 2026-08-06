@@ -10,7 +10,7 @@ run:
 	python server.py
 
 test:
-	python test_agent.py
+	pytest
 
 lint:
 	ruff check .
@@ -39,4 +39,4 @@ auth:
 	@echo "🔐 Caching AWS credentials to .aws_creds..."
 	@bash save-aws-creds.sh
 
-.PHONY: install run test clean deploy status destroy auth
+.PHONY: install run test lint clean deploy status destroy auth
