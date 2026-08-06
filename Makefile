@@ -8,10 +8,9 @@ PROJECTS = tpu-12B-v6e1-devops-agent \
            g2-4-2B-qat-L4-devops-agent \
            gpu-4B-cloudrun-devops-agent \
            gpu-2B-L4-ec2-agent \
-           gpu-4B-inf-devops-agent \
-           tpu-jax \
-           tpu-jax-inf2
-# ...the last two are the pure-JAX inference engines.
+           gpu-4B-inf-devops-agent
+# The pure-JAX inference engines (tpu-jax, tpu-jax-inf2) were split out of this
+# repo — they live at github.com/xbill9/tpu-jax and .../tpu-jax-inf2.
 
 .PHONY: all help menu submodules install test lint format clean
 

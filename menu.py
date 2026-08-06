@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Text menu for the gemma4-queens repo.
 
-Lists the sibling Gemma 4 projects — the MCP devops agents that drive vLLM and
-the two pure-JAX inference engines — explains what each one targets, and shows
-the demos each one ships. Pure stdlib.
+Lists the sibling Gemma 4 projects — the MCP devops agents that drive vLLM —
+explains what each one targets, and shows the demos each one ships. Pure stdlib.
 
     ./menu.py          interactive menu
     ./menu.py --all    print everything and exit
@@ -67,8 +66,6 @@ class Project:
     notes: list[str] = field(default_factory=list)
     demos: list[Demo] = field(default_factory=list)
 
-
-ENGINES = "Pure-JAX inference engines (first-party model code)"
 
 PROJECTS = [
     Project(
@@ -263,7 +260,8 @@ PROJECTS = [
                 "Benchmark sweep",
                 "python benchmark_sweep.py",
                 "Parameter sweep over the L4 endpoint; writes benchmark_sweep_results.csv "
-                "and the benchmark_chart / comparison_chart PNGs.",
+                "and regenerates benchmark_chart.png. The chart PNGs the markdown reports "
+                "link to are not checked in — run the sweep to produce them.",
                 "benchmark_sweep.py",
             ),
             Demo(
@@ -310,7 +308,8 @@ PROJECTS = [
             Demo(
                 "Read the results",
                 "less benchmark_report.md",
-                "Cloud Run GPU benchmark writeup plus benchmark_chart.png.",
+                "Cloud Run GPU benchmark writeup, backed by benchmark_results.csv. "
+                "The benchmark_chart.png it embeds is not checked in.",
                 "benchmark_report.md",
             ),
             Demo(
@@ -427,175 +426,6 @@ PROJECTS = [
             ),
         ],
     ),
-    Project(
-        dir="tpu-jax",
-        group=ENGINES,
-        title="Gemma 4 E2B QAT on TPU v6e-1 — pure JAX, no vLLM, no PyTorch",
-        cloud="Google Cloud",
-        chip="TPU v6e-1 (Trillium)",
-        hardware=(
-            "ct6e-standard-1t, 1 chip, 32GB HBM3; bare flex-start TPU VM running "
-            "jax[tpu] directly — no Docker, no vLLM"
-        ),
-        model="google/gemma-4-E2B-it-qat-w4a16-ct",
-        endpoint="http://<host>:8000  (served by jax_openai_server.py itself; no discovery layer)",
-        blurb=(
-            "Not a devops agent — a from-scratch inference engine. ports/gemma4/ reads the QAT "
-            "safetensors with no PyTorch in the path and implements the Gemma 4 forward, cached "
-            "decode and quantized KV in JAX; jax_engine.py wraps it as a stateful generator and "
-            "jax_openai_server.py puts an OpenAI-compatible HTTP/SSE face on it. It exists because "
-            "the vLLM TPU stack couldn't load this QAT export, and became a measurement project "
-            "about buffer donation, INT8 KV, static shapes, and the gap between a fast kernel and "
-            "a useful server."
-        ),
-        notes=[
-            (
-                "Kernel speed is not serving speed: 2,888 tok/s is a static-shape decode kernel; the "
-                "real checkpoint over HTTP measured ~139 tok/s, and concurrency never batches."
-            ),
-            (
-                "Earlier numbers were withdrawn — read benchmarks/runs/2026-07-29-kv-quant-v6e1/"
-                "REPORT.md before quoting any capacity figure. plot_benchmark.py is RETRACTED DATA."
-            ),
-            (
-                "skills/ and .claude/skills/ are generated snapshots — edit the root sources, "
-                "then run make skill. .mcp.json is gitignored (embeds the GCP project id)."
-            ),
-            (
-                "CPU tests use a synthetic checkpoint: they validate numerics and scheduling, "
-                "never throughput, HBM capacity or Pallas performance."
-            ),
-        ],
-        demos=[
-            Demo(
-                "Serve the pure-JAX engine",
-                "python3 jax_openai_server.py --model google/gemma-4-E2B-it-qat-w4a16-ct "
-                "--kv-cache-dtype int8 --quant-mode w4a16 --max-model-len 8192 --port 8000",
-                "Boots the FastAPI OpenAI-compatible server on a TPU VM with INT8 KV cache; "
-                "exposes chat/completions, SSE streaming, /health and /metrics.",
-                "jax_openai_server.py",
-            ),
-            Demo(
-                "Corrected kernel sweep",
-                "python3 ports/gemma4/jax_e_benchmark_sweep_v2.py "
-                "--batch-sizes 1,2,4,8,16,32,64 --contexts 8,128,512,2048 --json-out results.json",
-                "The methodologically corrected prefill + cached-decode benchmark (jitted "
-                "prefill, real KV cache, isolated processes). The v1 sweep is retracted.",
-                "ports/gemma4/jax_e_benchmark_sweep_v2.py",
-            ),
-            Demo(
-                "CPU correctness suite",
-                "python3 -m unittest discover -s tests",
-                "12 offline modules: KV-cache parity, chunked prefill, buffer donation, "
-                "quantized KV, PLE quantization, windowed KV, OpenAI server regressions.",
-                "tests",
-            ),
-            Demo(
-                "Kernel-gap profiling",
-                "python3 benchmarks/queued/kernel_gap_suite.py",
-                "JAX trace tooling that measures the gap between compiled kernel time and "
-                "wall-clock serving time.",
-                "benchmarks/queued/kernel_gap_suite.py",
-            ),
-            Demo(
-                "Read the corrected report",
-                "less benchmarks/runs/2026-07-29-kv-quant-v6e1/REPORT.md",
-                "The revalidation writeup plus the correction history — required reading "
-                "before quoting any capacity number.",
-                "benchmarks/runs/2026-07-29-kv-quant-v6e1/REPORT.md",
-            ),
-            Demo(
-                "Install the TPU skill + MCP server",
-                "make skill-install",
-                "Regenerates the tpu-management skill snapshots and installs them to "
-                "~/.claude/skills, registering the tpu-devops MCP server.",
-                "refresh_skill.py",
-            ),
-        ],
-    ),
-    Project(
-        dir="tpu-jax-inf2",
-        group=ENGINES,
-        title="Gemma 4 E2B QAT on AWS Inferentia2 — the same JAX engine, ported to Neuron",
-        cloud="AWS  (TPU v6e-1 retained as the parity reference)",
-        chip="AWS Inferentia2 (NeuronCore-v2)",
-        hardware=(
-            "EC2 inf2.xlarge / inf2.8xlarge, Ubuntu 24.04 Neuron AMI (SDK 2.31.0), "
-            "jax-neuronx via the PJRT 'neuron' plugin; retained gp3 compile-cache volume"
-        ),
-        model="google/gemma-4-E2B-it-qat-w4a16-ct",
-        endpoint="http://127.0.0.1:8000  (loopback only, systemd unit gemma4-jax-inf2; reach via SSM)",
-        blurb=(
-            "tpu-jax forked onto Inferentia2. The model math, loader, cached decode, OpenAI API and "
-            "benchmark methodology are shared with the TPU project — only the platform layer is "
-            "new: deployments/aws-inf2/ (a plan/apply EC2 launcher, user_data bootstrap and a "
-            "Neuron entrypoint that verifies the backend before importing the server), jax_neuron/ "
-            "(runtime probe -> compiler probe -> parity harness) and docs/neuron-jax-quirks.md. "
-            "It answers the Inferentia question with a yes: correct output at ~43 tok/s."
-        ),
-        notes=[
-            (
-                "--dequant-at-load is mandatory: the in-graph W4A16 matmul miscomputes on the "
-                "NeuronCore (greedy decode emits one repeated token). Host-side dequant is correct."
-            ),
-            (
-                "A too-large gather returns zeros, not an error — zero logits -> argmax 0 -> pad id -> "
-                "a clean 200 OK with zero completion tokens and nothing in the logs."
-            ),
-            (
-                "deploy.py does not build or upload the bundle; a stale --source-uri silently serves "
-                "pre-fix code. Rebuild with git archive after any engine change."
-            ),
-            "Never quote TPU throughput or memory numbers as Inf2 claims.",
-        ],
-        demos=[
-            Demo(
-                "Plan an Inf2 launch (read-only)",
-                "python3 deployments/aws-inf2/deploy.py plan --region us-east-1 "
-                "--subnet-id subnet-... --security-group-id sg-... "
-                "--instance-profile-name gemma4-inf2 --source-uri s3://.../bundle.tar.gz",
-                "Renders the full EC2 launch plan without touching AWS. plan is the default; "
-                "--apply is required to actually act.",
-                "deployments/aws-inf2/deploy.py",
-            ),
-            Demo(
-                "Neuron runtime probe",
-                "python3 jax_neuron/probe.py",
-                "One-minute gate exercising driver, PJRT plugin, PATH and neuronx-cc together; "
-                "asserts a neuron device is visible. Runs during bootstrap too.",
-                "jax_neuron/probe.py",
-            ),
-            Demo(
-                "Compiler probe",
-                "python3 jax_neuron/compile_probe.py --tiny",
-                "Asks whether neuronx-cc accepts the real engine graphs (decode, prefill, "
-                "sampling) rather than a hand-written stand-in.",
-                "jax_neuron/compile_probe.py",
-            ),
-            Demo(
-                "Greedy parity vs a CPU oracle",
-                'python3 jax_neuron/parity.py --local-dir "$CKPT" --reference ref.json '
-                "--subject-platform neuron",
-                "Greedy-decodes the same prompts through JaxGemmaEngine and through HF "
-                "transformers in fp32 on CPU. This catches 'runs happily, computes garbage'.",
-                "jax_neuron/parity.py",
-            ),
-            Demo(
-                "CPU correctness suite",
-                "python3 -m unittest discover -s tests",
-                "18 offline modules — the TPU set plus the Inf2 scaffold, backend caps, "
-                "MCP user_data rendering, JAX probe, parity harness and host dequant.",
-                "tests",
-            ),
-            Demo(
-                "Read the platform quirks",
-                "less docs/neuron-jax-quirks.md",
-                "The silent-zero gather, allocation limits and unsupported JAX features, all "
-                "measured on inf2. Read before debugging anything here.",
-                "docs/neuron-jax-quirks.md",
-            ),
-        ],
-    ),
 ]
 
 EXTRAS = [
@@ -623,16 +453,27 @@ EXTRAS = [
             "that one project on pushes touching its path. The other agents have no CI."
         ),
     ),
+    (
+        "tpu-jax / tpu-jax-inf2  (moved out)",
+        (
+            "The two pure-JAX inference engines — first-party Gemma 4 forward pass, KV cache, "
+            "sampler and OpenAI-compatible server, no vLLM and no PyTorch at serving time, on "
+            "TPU v6e-1 and AWS Inferentia2 — were split out of this repo and now live on their "
+            "own at github.com/xbill9/tpu-jax and github.com/xbill9/tpu-jax-inf2. They are not "
+            "submodules here; clone them separately."
+        ),
+    ),
 ]
 
-COMMON = """Two shapes live in this repo.
+COMMON = """One shape lives in this repo: operators.
 
-  Operators  — the six *-devops-agent / *-agent projects. Each is an MCP server that
-               shells out to gcloud/aws, launches someone else's inference server
-               (vllm/vllm-tpu, vllm/vllm-openai) in a container, and talks HTTP to it.
-  Engines    — tpu-jax and tpu-jax-inf2. The model forward pass, KV cache, sampler and
-               HTTP server are all first-party code; no vLLM and no PyTorch at serving
-               time. Same engine, two accelerators (TPU v6e-1 and AWS Inferentia2).
+  Each of the six *-devops-agent / *-agent projects is an MCP server that shells out
+  to gcloud/aws, launches someone else's inference server (vllm/vllm-tpu,
+  vllm/vllm-openai) in a container, and talks HTTP to it.
+
+  The two pure-JAX inference engines that used to live here — tpu-jax and
+  tpu-jax-inf2 — are now standalone repos (github.com/xbill9/tpu-jax and
+  .../tpu-jax-inf2). Nothing in this repo depends on them.
 
 Every agent project follows the same shape:
 
@@ -641,7 +482,7 @@ Every agent project follows the same shape:
   Makefile           install / run / test / lint / deploy / destroy / status / endpoint / query
   README.md          requirements, env vars, tool catalog
   DEPLOY.md          deployment runbook
-  CLAUDE.md          conventions and gotchas for this project
+  CLAUDE.md          conventions and gotchas (most projects; not all)
   init.sh, set_env.sh   bootstrap and environment (source set_env.sh, do not execute it)
 
 Typical flow:   make install  ->  make deploy  ->  make status  ->  python demo_launcher.py
@@ -677,8 +518,8 @@ def print_header() -> None:
     print(bold("  gemma4-queens — Gemma 4 on every accelerator we could get"))
     print(
         dim(
-            f"  {len(PROJECTS)} projects: MCP devops agents that drive vLLM, plus two"
-            " pure-JAX engines."
+            f"  {len(PROJECTS)} projects — MCP devops agents that provision accelerators"
+            " and drive vLLM on them."
         )
     )
     print(rule())

@@ -1,4 +1,0 @@
-mcp
-httpx
-openai
-boto3
