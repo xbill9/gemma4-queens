@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""One-shot demo launcher — cd into a project directory and run one of its demos.
+
+    ./launch                        pick a project, then a demo
+    ./launch tpu-12B                pick a demo from that project
+    ./launch tpu-12B 1              run demo 1 in tpu-12B-v6e1-devops-agent
+    ./launch tpu-12B bench          match the demo by name instead
+    ./launch --list                 every project and demo with its key
+    ./launch -n tpu-12B 1           print the command, don't run it
+    ./launch -y tpu-12B 1           skip the confirmation prompt
+
+Projects and demos both match on a case-insensitive substring, so short
+prefixes work as long as they are unambiguous. The catalog is the one in
+menu.py — this is the same run step the menu performs, without the TUI.
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from menu import (
+    PROJECTS,
+    Demo,
+    Project,
+    bold,
+    cyan,
+    dim,
+    exists,
+    present,
+    run_demo,
+    yellow,
+)
+
+USAGE = "usage: ./launch [-y] [-n] [--list] [project] [demo]"
+
+
+def die(msg: str, code: int = 2) -> "None":
+    print(f"  {yellow(msg)}", file=sys.stderr)
+    sys.exit(code)
+
+
+def list_all() -> None:
+    for i, p in enumerate(PROJECTS, 1):
+        flag = "" if present(p) else yellow("  [absent]")
+        print(f"\n  {bold(str(i))}. {cyan(p.dir)}{flag}")
+        print(f"     {dim(p.title)}")
+        for j, d in enumerate(p.demos, 1):
+            mark = " " if exists(p, d.path) else dim("!")
+            print(f"      {mark} {bold(str(j))}) {d.name}")
+            print(f"          {yellow('$ ' + d.cmd)}")
+    print()
+
+
+def pick(token: str, items: list, label: str, describe) -> int:
+    """Resolve a 1-based number or a substring to an index into `items`."""
+    if token.isdigit():
+        n = int(token)
+        if not 1 <= n <= len(items):
+            die(f"no {label} {n} — there are {len(items)}.")
+        return n - 1
+    tok = token.lower()
+    hits = [i for i, it in enumerate(items) if tok in describe(it).lower()]
+    exact = [
+        i for i, it in enumerate(items) if tok == describe(it).split("\n")[0].lower()
+    ]
+    if exact:
+        return exact[0]
+    if not hits:
+        die(f"no {label} matches {token!r}.")
+    if len(hits) > 1:
+        print(f"  {yellow(token + ' is ambiguous:')}", file=sys.stderr)
+        for i in hits:
+            print(f"    {describe(items[i]).splitlines()[0]}", file=sys.stderr)
+        sys.exit(2)
+    return hits[0]
+
+
+def project_key(p: Project) -> str:
+    return f"{p.dir}\n{p.title}\n{p.chip}"
+
+
+def demo_key(d: Demo) -> str:
+    return f"{d.name}\n{d.cmd}"
+
+
+def prompt(items: list, render, what: str) -> "int | None":
+    for i, it in enumerate(items, 1):
+        print(f"  {bold(str(i))}. {render(it)}")
+    print()
+    try:
+        answer = input(f"  {what} [1-{len(items)}, Enter to quit]: ").strip()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return None
+    if not answer:
+        return None
+    if not answer.isdigit() or not 1 <= int(answer) <= len(items):
+        die("not a choice.")
+    return int(answer) - 1
+
+
+def main() -> int:
+    argv = sys.argv[1:]
+    assume_yes = dry_run = False
+    rest: list = []
+    for arg in argv:
+        if arg in ("-h", "--help"):
+            print(__doc__)
+            return 0
+        elif arg in ("-l", "--list"):
+            list_all()
+            return 0
+        elif arg in ("-y", "--yes"):
+            assume_yes = True
+        elif arg in ("-n", "--dry-run"):
+            dry_run = True
+        elif arg.startswith("-"):
+            die(f"unknown option {arg}\n{USAGE}")
+        else:
+            rest.append(arg)
+    if len(rest) > 2:
+        die(USAGE)
+
+    if rest:
+        p = PROJECTS[pick(rest[0], PROJECTS, "project", project_key)]
+    else:
+        print()
+        i = prompt(
+            PROJECTS,
+            lambda p: f"{cyan(p.dir)}\n     {dim(p.title)}",
+            "Project",
+        )
+        if i is None:
+            return 0
+        p = PROJECTS[i]
+
+    if not present(p):
+        die(f"{p.dir}/ is not on disk.", 1)
+
+    if len(rest) > 1:
+        d = p.demos[pick(rest[1], p.demos, "demo", demo_key)]
+    else:
+        print(f"\n  {bold(p.title)}  {dim(p.dir + '/')}\n")
+        i = prompt(
+            p.demos,
+            lambda d: (
+                f"{d.name}{'' if exists(p, d.path) else dim('  [missing]')}"
+                f"\n     {yellow('$ ' + d.cmd)}"
+            ),
+            "Demo",
+        )
+        if i is None:
+            return 0
+        d = p.demos[i]
+
+    if not exists(p, d.path):
+        die(f"{d.path} is not present in {p.dir}/ — nothing to run.", 1)
+
+    if dry_run:
+        print(f"cd {os.path.join(os.path.dirname(os.path.abspath(__file__)), p.dir)}")
+        print(d.cmd)
+        return 0
+    return run_demo(p, d, assume_yes=assume_yes)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -2,22 +2,44 @@
 """Text menu for the gemma4-queens repo.
 
 Lists the sibling Gemma 4 projects — the MCP devops agents that drive vLLM —
-explains what each one targets, and shows the demos each one ships. Pure stdlib.
+explains what each one targets, and shows the demos each one ships.
 
-    ./menu.py          interactive menu
+    ./menu.py          arrow-key menu (uses rich if it is installed)
     ./menu.py --all    print everything and exit
+    ./menu.py --plain  numeric-prompt menu (no rich, no raw terminal)
+
+Navigation: up/down (or j/k) to move, Enter to open or run, Esc/Left to go
+back, q to quit. Number keys still jump straight to an entry.
+
+./launch is the same catalog without the TUI — it cds into a project and runs
+one demo, either from a picker or straight from the command line.
 """
 
 import os
 import shutil
 import subprocess
 import sys
+import textwrap
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 WIDTH = min(shutil.get_terminal_size((100, 24)).columns, 100)
 
 USE_COLOR = sys.stdout.isatty() and not os.environ.get("NO_COLOR")
+
+try:
+    from rich.console import Console, Group, RenderableType
+    from rich.live import Live
+    from rich.markup import escape
+    from rich.panel import Panel
+    from rich.rule import Rule
+    from rich.table import Table
+    from rich.text import Text
+
+    HAVE_RICH = True
+except ImportError:  # pragma: no cover - fallback path
+    HAVE_RICH = False
 
 
 def c(text: str, code: str) -> str:
@@ -489,6 +511,21 @@ Typical flow:   make install  ->  make deploy  ->  make status  ->  python demo_
 The agents are MCP servers; `make run` serves them on stdio for a client to attach to."""
 
 
+# ─────────────────────────────── shared helpers ───────────────────────────────
+
+
+def exists(project: Project, rel: str) -> bool:
+    return bool(rel) and os.path.exists(os.path.join(ROOT, project.dir, rel))
+
+
+def present(project: Project) -> bool:
+    return os.path.isdir(os.path.join(ROOT, project.dir))
+
+
+def ready_count(project: Project) -> int:
+    return sum(1 for d in project.demos if exists(project, d.path))
+
+
 def rule(char: str = "─") -> str:
     return dim(char * WIDTH)
 
@@ -499,8 +536,6 @@ def wrap(
     width: int | None = None,
     subsequent: str | None = None,
 ) -> str:
-    import textwrap
-
     return textwrap.fill(
         text,
         width=width or WIDTH,
@@ -509,8 +544,37 @@ def wrap(
     )
 
 
-def exists(project: Project, rel: str) -> bool:
-    return bool(rel) and os.path.exists(os.path.join(ROOT, project.dir, rel))
+def run_demo(p: Project, d: Demo, assume_yes: bool = False) -> int:
+    """Confirm, then run one demo in its project directory. Cooked terminal only.
+
+    Returns the demo's exit status, or 130 if it was skipped or interrupted.
+    """
+    cwd = os.path.join(ROOT, p.dir)
+    print()
+    print(f"  {yellow('$ cd ' + p.dir + ' && ' + d.cmd)}")
+    print(
+        dim("  This may talk to live cloud resources and cost money. Ctrl-C stops it.")
+    )
+    if not assume_yes:
+        try:
+            answer = input("  Run it? [y/N] ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 130
+        if answer not in ("y", "yes"):
+            print(dim("  skipped"))
+            return 130
+    print(rule())
+    try:
+        code = subprocess.run(d.cmd, shell=True, cwd=cwd, check=False).returncode
+    except KeyboardInterrupt:
+        print(dim("\n  interrupted"))
+        code = 130
+    print(rule())
+    return code
+
+
+# ──────────────────────────── plain (stdlib) output ───────────────────────────
 
 
 def print_header() -> None:
@@ -532,13 +596,10 @@ def print_menu() -> None:
         if p.group != group:
             group = p.group
             print(f"  {dim(group)}")
-        have = sum(1 for d in p.demos if exists(p, d.path))
-        missing = (
-            "" if os.path.isdir(os.path.join(ROOT, p.dir)) else yellow("  [absent]")
-        )
+        missing = "" if present(p) else yellow("  [absent]")
         print(f"  {bold(str(i))}. {cyan(p.dir)}{missing}")
         print(f"     {p.title}")
-        print(dim(f"     {p.cloud} · {p.chip} · {have} demos"))
+        print(dim(f"     {p.cloud} · {p.chip} · {ready_count(p)} demos"))
     print()
     for key, (name, _) in enumerate(EXTRAS, len(PROJECTS) + 1):
         print(f"  {bold(str(key))}. {cyan(name)}")
@@ -570,8 +631,7 @@ def print_project(p: Project) -> None:
     print()
     print(f"  {bold(green('Demos'))}")
     for i, d in enumerate(p.demos, 1):
-        ok = exists(p, d.path)
-        mark = "" if ok else dim("  [missing]")
+        mark = "" if exists(p, d.path) else dim("  [missing]")
         print(f"    {bold(str(i))}) {d.name}{mark}")
         print(f"       {yellow('$ ' + d.cmd)}")
         print(wrap(d.desc, indent="       "))
@@ -579,23 +639,21 @@ def print_project(p: Project) -> None:
     print(rule())
 
 
-def run_demo(p: Project, d: Demo) -> None:
-    cwd = os.path.join(ROOT, p.dir)
+def print_all() -> None:
+    print_header()
+    for p in PROJECTS:
+        print_project(p)
     print()
-    print(f"  {yellow('$ ' + d.cmd)}")
-    print(dim(f"  in {cwd}"))
-    print(
-        dim("  This may talk to live cloud resources and cost money. Ctrl-C stops it.")
-    )
-    if input("  Run it? [y/N] ").strip().lower() not in ("y", "yes"):
-        print(dim("  skipped"))
-        return
+    print(f"  {bold('Also in this repo')}")
+    for name, desc in EXTRAS:
+        print(f"\n  {cyan(name)}")
+        print(wrap(desc))
+    print()
     print(rule())
-    try:
-        subprocess.run(d.cmd, shell=True, cwd=cwd, check=False)
-    except KeyboardInterrupt:
-        print(dim("\n  interrupted"))
-    print(rule())
+    print()
+    for line in COMMON.splitlines():
+        print("  " + line)
+    print()
 
 
 def project_loop(p: Project) -> None:
@@ -618,28 +676,7 @@ def project_loop(p: Project) -> None:
             print(dim("  ?"))
 
 
-def print_all() -> None:
-    print_header()
-    for p in PROJECTS:
-        print_project(p)
-    print()
-    print(f"  {bold('Also in this repo')}")
-    for name, desc in EXTRAS:
-        print(f"\n  {cyan(name)}")
-        print(wrap(desc))
-    print()
-    print(rule())
-    print()
-    for line in COMMON.splitlines():
-        print("  " + line)
-    print()
-
-
-def main() -> int:
-    if "--all" in sys.argv or "-a" in sys.argv:
-        print_all()
-        return 0
-
+def plain_main() -> int:
     while True:
         print_menu()
         try:
@@ -671,6 +708,681 @@ def main() -> int:
             input("  Enter to continue ")
         else:
             print(dim("  ?"))
+
+
+# ──────────────────────────────── keyboard input ──────────────────────────────
+
+_KEYS = {
+    "\r": "enter",
+    "\n": "enter",
+    " ": "enter",
+    "\x7f": "back",
+    "\x08": "back",
+    "\x03": "quit",  # ctrl-c
+    "\x04": "quit",  # ctrl-d
+}
+
+_ESCAPES = {
+    "": "esc",
+    "[A": "up",
+    "[B": "down",
+    "[C": "right",
+    "[D": "left",
+    "OA": "up",
+    "OB": "down",
+    "OC": "right",
+    "OD": "left",
+    "[H": "home",
+    "[F": "end",
+    "[1~": "home",
+    "[4~": "end",
+    "[5~": "pgup",
+    "[6~": "pgdn",
+}
+
+
+class Keyboard:
+    """Raw-mode keyboard held open for the whole menu session.
+
+    Raw mode has to stay on between frames — in canonical mode the tty holds
+    keystrokes until Enter, so a lone arrow press would never arrive.
+    """
+
+    def __init__(self) -> None:
+        import termios
+
+        self.fd = sys.stdin.fileno()
+        self.termios = termios
+        self.saved = termios.tcgetattr(self.fd)
+        self.buf = ""
+
+    def __enter__(self) -> "Keyboard":
+        self._raw()
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self._restore()
+
+    def _raw(self) -> None:
+        import tty
+
+        tty.setraw(self.fd)
+
+    def _restore(self) -> None:
+        self.termios.tcsetattr(self.fd, self.termios.TCSADRAIN, self.saved)
+
+    @contextmanager
+    def cooked(self):
+        """Temporarily give the terminal back — for input() and subprocesses."""
+        self._restore()
+        try:
+            yield
+        finally:
+            self._raw()
+
+    def _take(self) -> "str | None":
+        """Pop one complete key off the buffer, or None if it needs more bytes."""
+        if not self.buf:
+            return None
+        ch = self.buf[0]
+        if ch != "\x1b":
+            self.buf = self.buf[1:]
+            return _KEYS.get(ch, ch.lower())
+        if len(self.buf) == 1:
+            return None  # a bare Esc, or the head of a sequence still arriving
+        if self.buf[1] not in "[O":
+            self.buf = self.buf[1:]
+            return "esc"
+        for i in range(2, len(self.buf)):
+            if self.buf[i].isalpha() or self.buf[i] == "~":
+                seq, self.buf = self.buf[1 : i + 1], self.buf[i + 1 :]
+                return _ESCAPES.get(seq, "esc")
+        return None  # incomplete CSI
+
+    def read(self) -> str:
+        """Block for a single keypress and return a normalized name.
+
+        Reads the fd directly: sys.stdin buffering would pull the tail of an
+        escape sequence out of the fd, leaving select() with nothing to see.
+        Key repeat delivers several sequences in one read, so exactly one key is
+        consumed per call and the rest stays buffered — draining the lot would
+        turn a held-down arrow into a single unrecognized (and destructive) Esc.
+        """
+        import select
+
+        while True:
+            key = self._take()
+            if key is not None:
+                return key
+            if self.buf and not select.select([self.fd], [], [], 0.05)[0]:
+                self.buf = self.buf[1:]  # nothing followed it — a real Esc
+                return "esc"
+            raw = os.read(self.fd, 64)
+            if not raw:  # EOF — treat as quit rather than spinning
+                return "quit"
+            self.buf += raw.decode("utf-8", "ignore")
+
+
+class Quit(Exception):
+    """Raised from a sub-view to unwind the whole menu."""
+
+
+# ─────────────────────────────── rich rendering ───────────────────────────────
+
+MENU_ACTIONS = [
+    ("common", "Common layout & conventions", "How the agents are put together"),
+    ("all", "Print everything", "Dump it all to the scrollback"),
+    ("quit", "Quit", "Leave the menu"),
+]
+
+
+def _facts(p: Project) -> Table:
+    t = Table.grid(padding=(0, 2))
+    t.add_column(style="bold", no_wrap=True)
+    t.add_column(overflow="fold")
+    t.add_row("Cloud", escape(p.cloud))
+    t.add_row("Hardware", escape(p.hardware))
+    t.add_row("Model", escape(p.model))
+    t.add_row("Endpoint", escape(p.endpoint))
+    return t
+
+
+def _notes_panel(p: Project, count: int | None = None) -> Panel:
+    """Gotchas. `count` shows only the first N, with a footer for the rest."""
+    shown = p.notes if count is None else p.notes[:count]
+    notes = Table.grid(padding=(0, 1))
+    notes.add_column(width=2, no_wrap=True)
+    notes.add_column(overflow="fold")
+    for n in shown:
+        notes.add_row(Text("•", style="yellow"), Text(n))
+    if len(shown) < len(p.notes):
+        notes.add_row("", Text(f"+{len(p.notes) - len(shown)} more", style="dim"))
+    return Panel(notes, title="Gotchas", border_style="yellow", padding=(0, 1))
+
+
+def _fit_notes(console: "Console", p: Project, budget: int) -> "Panel | None":
+    """The largest gotchas panel that fits in `budget` lines, or None if none does."""
+    for count in range(len(p.notes), 0, -1):
+        panel = _notes_panel(p, None if count == len(p.notes) else count)
+        if _height(console, panel) <= budget:
+            return panel
+    return None
+
+
+def _window(total: int, selected: int, budget: int) -> tuple[int, int]:
+    """Slice bounds over `total` rows fitting `budget` lines, keeping `selected` in view."""
+    budget = max(1, budget)
+    if budget >= total:
+        return 0, total
+    start = max(0, min(selected - budget // 2, total - budget))
+    return start, start + budget
+
+
+def _title_bar(subtitle: str) -> Panel:
+    body = Text("gemma4-queens", style="bold")
+    body.append(" — Gemma 4 on every accelerator we could get", style="bold")
+    body.append("\n" + subtitle, style="dim")
+    return Panel(body, border_style="cyan", padding=(0, 1))
+
+
+def _footer(keys: str) -> Text:
+    return Text(keys, style="dim")
+
+
+def _height(console: "Console", renderable: "RenderableType") -> int:
+    """How many terminal lines a renderable takes at the current width."""
+    return len(
+        console.render_lines(renderable, console.options.update(height=None), pad=False)
+    )
+
+
+def _clip(console: "Console", body: str, max_lines: int) -> Text:
+    """Wrap body to the console width, cut to max_lines with an ellipsis."""
+    if max_lines <= 0:
+        return Text("")
+    lines = textwrap.wrap(body, width=max(20, console.width))
+    if len(lines) > max_lines:
+        lines = lines[: max_lines - 1] + [lines[max_lines - 1][:-1] + "…"]
+    return Text("\n".join(lines))
+
+
+def menu_rows() -> list:
+    """The top-level menu, in display order: projects, extras, then actions."""
+    rows: list = [("project", i, p) for i, p in enumerate(PROJECTS)]
+    rows += [("extra", len(PROJECTS) + i, e) for i, e in enumerate(EXTRAS)]
+    rows += [
+        ("action", len(PROJECTS) + len(EXTRAS) + i, a)
+        for i, a in enumerate(MENU_ACTIONS)
+    ]
+    return rows
+
+
+def menu_entries() -> list:
+    """menu_rows() flattened for display: one line each, section heads interleaved."""
+    entries: list = []
+    section = None
+    for row in menu_rows():
+        kind, _pos, item = row
+        key = item.group if kind == "project" else kind
+        if key != section:
+            section = key
+            label = {
+                "project": item.group if kind == "project" else "",
+                "extra": "also in this repo",
+            }.get(kind, "")
+            entries.append(("head", label))
+        entries.append(("row", row))
+    return entries
+
+
+def _ellipsize(text: str, width: int) -> str:
+    """Hard-truncate to `width` columns. Rich drops whole columns from an
+    over-wide grid — including the cursor — so nothing may overflow."""
+    if width <= 0:
+        return ""
+    return text if len(text) <= width else text[: max(1, width - 1)] + "…"
+
+
+def _menu_table(
+    console: "Console", entries: list, index: int, top: str, bottom: str
+) -> Table:
+    """One line per entry — the caller has already trimmed `entries` to fit."""
+    # (cursor, number, name, meta) as plain strings, so widths can be budgeted.
+    cells: list = []
+    for i, (kind, value) in enumerate(entries):
+        if (i == 0 and top) or (i == len(entries) - 1 and bottom):
+            cells.append((None, "", "", top if i == 0 else bottom, ""))
+        elif kind == "head":
+            cells.append((None, "", "", value, ""))
+        else:
+            row_kind, pos, item = value
+            if row_kind == "project":
+                flag = "" if present(item) else "  [absent]"
+                cells.append(
+                    (
+                        row_kind,
+                        pos,
+                        str(pos + 1),
+                        item.dir,
+                        f"{item.chip} · {ready_count(item)} demos{flag}",
+                    )
+                )
+            elif row_kind == "extra":
+                cells.append((row_kind, pos, str(pos + 1), item[0], ""))
+            else:
+                key, label, hint = item
+                cells.append((row_kind, pos, key[0], label, hint))
+
+    avail = console.width - 8  # cursor + number columns and their padding
+    name_w = max((len(c[3]) for c in cells), default=0)
+    meta_w = max((len(c[4]) for c in cells), default=0)
+    if name_w + meta_w > avail:
+        meta_w = max(0, avail - name_w)
+        name_w = min(name_w, avail)
+
+    table = Table.grid(padding=(0, 1))
+    table.add_column(width=2, no_wrap=True)  # cursor
+    table.add_column(width=2, justify="right", no_wrap=True)  # number
+    table.add_column(width=name_w, no_wrap=True)  # name
+    if meta_w >= 8:
+        table.add_column(width=meta_w, no_wrap=True)  # meta
+
+    for kind, pos, number, name, meta in cells:
+        if kind is None:  # a section head or a scroll marker
+            cell: list = ["", "", Text(_ellipsize(name, name_w), style="dim")]
+        else:
+            selected = pos == index
+            style = "cyan" if kind in ("project", "extra") else "none"
+            if selected:
+                style = "bold cyan" if kind in ("project", "extra") else "bold"
+            cell = [
+                "▸" if selected else " ",
+                number,
+                Text(_ellipsize(name, name_w), style=style),
+            ]
+        if meta_w >= 8:
+            cell.append(Text(_ellipsize(meta, meta_w), style="dim"))
+        table.add_row(*cell)
+    return table
+
+
+def render_menu(console: "Console", index: int, compact: bool = False) -> Group:
+    rows = menu_rows()
+    index = max(0, min(index, len(rows) - 1))
+    entries = menu_entries()
+    selected = next(
+        i
+        for i, (kind, value) in enumerate(entries)
+        if kind == "row" and value[1] == index
+    )
+
+    title: RenderableType = (
+        Text("gemma4-queens", style="bold cyan", no_wrap=True, overflow="ellipsis")
+        if compact
+        else _title_bar(
+            f"{len(PROJECTS)} MCP devops agents that provision accelerators "
+            "and drive vLLM on them."
+        )
+    )
+    footer = _footer("  ↑↓/jk move · enter open · 1-9 jump · a print all · q quit")
+    # The list and the key hints are the menu; the detail pane is a bonus. Budget
+    # the list first, then spend what is left — never more than the screen holds,
+    # or Live(screen=True) crops the footer off the bottom.
+    budget = console.size.height - _height(console, title) - _height(console, footer)
+    list_budget = max(3, min(len(entries), budget - 5))
+    spare = budget - list_budget - 1  # -1 for the rule under the list
+    if spare < 3:  # no room for a useful detail pane — give the lines back
+        list_budget, spare = max(1, min(len(entries), budget)), 0
+
+    start, end = _window(len(entries), selected, list_budget)
+    # A marker takes the place of a row, so it can never displace the cursor.
+    top = bottom = ""
+    if start and selected != start:
+        top = f"↑ {sum(1 for kind, _ in entries[: start + 1] if kind == 'row')} more"
+    if end < len(entries) and selected != end - 1:
+        bottom = f"↓ {sum(1 for kind, _ in entries[end - 1 :] if kind == 'row')} more"
+    table = _menu_table(console, entries[start:end], index, top, bottom)
+
+    parts: list = [title, table]
+    if spare >= 3:
+        parts += [Rule(style="dim"), _detail_for(console, rows[index], spare)]
+    parts.append(footer)
+    group = Group(*parts)
+    if _height(console, group) <= console.size.height:
+        return group
+    if spare:  # the detail pane overran its budget — drop it
+        group = Group(title, table, footer)
+        if _height(console, group) <= console.size.height:
+            return group
+    # Still too tall: the boxed title bar is the last thing that can go.
+    return group if compact else render_menu(console, index, compact=True)
+
+
+def _detail_for(console: "Console", row, budget: int) -> Group:
+    """Detail pane for the highlighted row, trimmed to `budget` lines."""
+    kind, _pos, item = row
+    if kind == "project":
+        head = Text(item.title, style="bold")
+        tail = Text(
+            f"{len(item.demos)} demos ({ready_count(item)} runnable) · "
+            f"{len(item.notes)} gotchas — press enter to open",
+            style="green",
+        )
+        body = item.blurb
+    elif kind == "extra":
+        head = Text(item[0], style="bold cyan")
+        tail = None
+        body = item[1]
+    else:
+        head = Text(item[1], style="bold")
+        tail = None
+        body = item[2]
+
+    if budget <= 1:
+        return Group(head)
+    if tail is not None and budget <= 3:
+        return Group(head, tail)
+    reserved = 2 if tail is None else 4  # head + blanks (+ tail)
+    text = _clip(console, body, budget - reserved)
+    parts: list = [head]
+    if text.plain:
+        parts.extend(["", text])
+    if tail is not None:
+        parts.extend(["", tail])
+    return Group(*parts)
+
+
+def render_project(
+    console: "Console", p: Project, index: int, show_notes: bool, compact: bool = False
+) -> Group:
+    header = Text(p.title, style="bold")
+    header.append(f"\n{p.dir}/", style="cyan")
+    if not present(p):
+        header.append("   [not on disk]", style="yellow")
+    title: RenderableType = Panel(header, border_style="cyan", padding=(0, 1))
+    footer = _footer("  ↑↓/jk move · enter run · g gotchas · esc/← back · q quit")
+
+    # Boxed, the header and demo list cost 9 lines before any content. Below that
+    # the boxes come off — a cramped view still beats one cropped by Live.
+    compact = compact or console.size.height < _height(console, title) + 5
+    if compact:
+        title = Text(p.title, style="bold", no_wrap=True, overflow="ellipsis")
+
+    # The demo list, its detail and the key hints always stay on screen; the
+    # background (gotchas, facts, blurb) fills whatever room is left over.
+    avail = console.size.height - _height(console, title) - _height(console, footer)
+
+    # Window the demo list so the cursor is always visible on a short screen.
+    list_budget = max(1, min(len(p.demos), avail - (3 if compact else 5)))
+    start, end = _window(len(p.demos), index, list_budget)
+    # Truncate to fit rather than letting rich shed the cursor column.
+    name_w = max(4, min(max(len(d.name) for d in p.demos), console.width - 10))
+    demos = Table.grid(padding=(0, 1))
+    demos.add_column(width=2, no_wrap=True)
+    demos.add_column(width=2, justify="right", no_wrap=True)
+    demos.add_column(width=name_w, no_wrap=True)
+    demos.add_column(width=1, no_wrap=True)
+    for i in range(start, end):
+        # As in the main menu, a scroll marker never takes the cursor's row.
+        if i == start and start and index != i:
+            demos.add_row(
+                "", "", Text(_ellipsize(f"↑ {start + 1} more", name_w), style="dim"), ""
+            )
+            continue
+        if i == end - 1 and end < len(p.demos) and index != i:
+            more = f"↓ {len(p.demos) - end + 1} more"
+            demos.add_row("", "", Text(_ellipsize(more, name_w), style="dim"), "")
+            continue
+        d = p.demos[i]
+        selected = i == index
+        ok = exists(p, d.path)
+        cursor = "▸" if selected else " "
+        style = "bold green" if selected else ("green" if ok else "dim")
+        mark = Text("●" if ok else "○", style="green" if ok else "dim")
+        demos.add_row(
+            cursor, str(i + 1), Text(_ellipsize(d.name, name_w), style=style), mark
+        )
+    demo_panel: RenderableType = (
+        demos
+        if compact
+        else Panel(demos, title="Demos", border_style="green", padding=(0, 1))
+    )
+
+    d = p.demos[index]
+    body = d.desc
+    if not exists(p, d.path):
+        body += f"  ({d.path} is not present in {p.dir}/ — nothing to run.)"
+    cmd_line = "$ cd " + p.dir + " && " + d.cmd
+    command = Text(cmd_line, style="yellow")
+    detail_budget = avail - _height(console, demo_panel)
+    if _height(console, command) > max(1, detail_budget - 1):
+        # A long command on a narrow screen would wrap away the whole detail pane.
+        command = Text(cmd_line, style="yellow", no_wrap=True, overflow="ellipsis")
+    desc = _clip(console, body, detail_budget - _height(console, command))
+    detail = Group(command, desc) if desc.plain else Group(command)
+
+    spare = avail - _height(console, demo_panel) - _height(console, detail)
+    # (what to keep first when space is tight, where it goes on screen)
+    candidates: list = [(1, 0, _facts(p))]
+    if show_notes and p.notes:
+        # Toggled on explicitly, so it outranks the facts — and it trims itself
+        # to whatever room there is rather than silently not appearing.
+        notes = _fit_notes(console, p, spare - 1)
+        if notes is not None:
+            candidates.insert(0, (0, 2, notes))
+    optional: list = []
+    for _priority, order, renderable in candidates:
+        cost = _height(console, renderable) + 1
+        if cost <= spare:
+            spare -= cost
+            optional.append((order, renderable))
+    blurb = _clip(console, p.blurb, spare - 1)
+    if blurb.plain:
+        optional.append((1, blurb))
+
+    parts: list = [title]
+    for _order, renderable in sorted(optional, key=lambda item: item[0]):
+        parts.extend([renderable, ""])
+    parts.extend([demo_panel, detail, footer])
+    group = Group(*parts)
+    if _height(console, group) <= console.size.height:
+        return group
+    if optional:  # the background overran — the demo list is what matters
+        group = Group(title, demo_panel, detail, footer)
+        if _height(console, group) <= console.size.height:
+            return group
+    return group if compact else render_project(console, p, index, show_notes, True)
+
+
+def render_project_full(p: Project) -> Group:
+    """The whole project, demos expanded — for --all / 'print everything'."""
+    header = Text(p.title, style="bold")
+    header.append(f"\n{p.dir}/", style="cyan")
+    if not present(p):
+        header.append("   [not on disk]", style="yellow")
+
+    parts: list = [
+        Panel(header, border_style="cyan", padding=(0, 1)),
+        _facts(p),
+        "",
+        Text(p.blurb),
+        "",
+    ]
+    if p.notes:
+        parts.append(_notes_panel(p))
+        parts.append("")
+
+    demos = Table.grid(padding=(0, 1))
+    demos.add_column(width=2, no_wrap=True)
+    demos.add_column(overflow="fold")
+    for i, d in enumerate(p.demos, 1):
+        entry = Text(f"{i}. {d.name}", style="bold")
+        if not exists(p, d.path):
+            entry.append("  [missing]", style="dim")
+        entry.append("\n$ " + d.cmd, style="yellow")
+        entry.append("\n" + d.desc, style="none")
+        demos.add_row(Text("●" if exists(p, d.path) else "○", style="green"), entry)
+        demos.add_row("", "")
+    parts.append(Panel(demos, title="Demos", border_style="green", padding=(0, 1)))
+    return Group(*parts)
+
+
+def rich_print_all(console: "Console") -> None:
+    console.print(
+        _title_bar(
+            f"{len(PROJECTS)} MCP devops agents that provision accelerators and drive vLLM on them."
+        )
+    )
+    for p in PROJECTS:
+        console.print(render_project_full(p))
+        console.print(Rule(style="dim"))
+    console.print(Text("Also in this repo", style="bold"))
+    for name, desc in EXTRAS:
+        console.print(Text(name, style="cyan"))
+        console.print(Text(desc))
+        console.print()
+    console.print(Panel(Text(COMMON), title="Common layout", border_style="cyan"))
+
+
+def _wait(console: "Console", prompt: str = "  Enter to continue ") -> None:
+    try:
+        input(prompt)
+    except (EOFError, KeyboardInterrupt):
+        print()
+
+
+def rich_project_view(
+    live: "Live", console: "Console", kb: Keyboard, p: Project
+) -> None:
+    index = 0
+    show_notes = False
+    n = len(p.demos)
+    while True:
+        live.update(render_project(console, p, index, show_notes), refresh=True)
+        key = kb.read()
+        if key == "quit" or key == "q":
+            raise Quit
+        if key in ("esc", "back", "left", "h"):
+            return
+        if key in ("up", "k"):
+            index = (index - 1) % n
+        elif key in ("down", "j"):
+            index = (index + 1) % n
+        elif key == "home":
+            index = 0
+        elif key == "end":
+            index = n - 1
+        elif key == "g":
+            show_notes = not show_notes
+        elif key.isdigit() and 1 <= int(key) <= n:
+            index = int(key) - 1
+        elif key in ("enter", "right", "l"):
+            d = p.demos[index]
+            live.stop()
+            with kb.cooked():
+                if not exists(p, d.path):
+                    print(
+                        dim(
+                            f"\n  {d.path} is not present in {p.dir}/ — nothing to run."
+                        )
+                    )
+                else:
+                    run_demo(p, d)
+                _wait(console)
+            live.start(refresh=True)
+
+
+def common_page() -> Group:
+    return Group(
+        Panel(
+            Text(COMMON),
+            title="Common layout & conventions",
+            border_style="cyan",
+            padding=(0, 1),
+        ),
+        _footer("  any key to go back"),
+    )
+
+
+def rich_main() -> int:
+    console = Console(highlight=False)
+    rows_len = len(menu_rows())
+    index = 0
+    with (
+        Keyboard() as kb,
+        Live(console=console, screen=True, auto_refresh=False) as live,
+    ):
+        while True:
+            live.update(render_menu(console, index), refresh=True)
+            try:
+                key = kb.read()
+            except (EOFError, KeyboardInterrupt):
+                return 0
+
+            if key in ("quit", "q"):
+                return 0
+            if key in ("up", "k"):
+                index = (index - 1) % rows_len
+                continue
+            if key in ("down", "j"):
+                index = (index + 1) % rows_len
+                continue
+            if key == "home":
+                index = 0
+                continue
+            if key == "end":
+                index = rows_len - 1
+                continue
+            if key.isdigit() and 1 <= int(key) <= len(PROJECTS) + len(EXTRAS):
+                index = int(key) - 1
+                continue
+
+            action = None
+            if key == "c":
+                action = "common"
+            elif key == "a":
+                action = "all"
+            elif key in ("enter", "right", "l"):
+                if index < len(PROJECTS):
+                    try:
+                        rich_project_view(live, console, kb, PROJECTS[index])
+                    except Quit:
+                        return 0
+                    continue
+                if index < len(PROJECTS) + len(EXTRAS):
+                    continue  # the detail pane already shows the whole entry
+                action = MENU_ACTIONS[index - len(PROJECTS) - len(EXTRAS)][0]
+
+            if action == "quit":
+                return 0
+            if action == "common":
+                live.update(common_page(), refresh=True)
+                if kb.read() == "quit":
+                    return 0
+            elif action == "all":
+                live.stop()
+                with kb.cooked():
+                    rich_print_all(console)
+                    _wait(console)
+                live.start(refresh=True)
+
+
+def main() -> int:
+    argv = sys.argv[1:]
+    if "--all" in argv or "-a" in argv:
+        if HAVE_RICH:
+            rich_print_all(Console(highlight=False))
+        else:
+            print_all()
+        return 0
+
+    interactive = sys.stdin.isatty() and sys.stdout.isatty()
+    if HAVE_RICH and interactive and "--plain" not in argv:
+        try:
+            return rich_main()
+        except KeyboardInterrupt:
+            return 0
+    return plain_main()
 
 
 if __name__ == "__main__":

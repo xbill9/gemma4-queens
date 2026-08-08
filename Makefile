@@ -12,7 +12,7 @@ PROJECTS = tpu-12B-v6e1-devops-agent \
 # The pure-JAX inference engines (tpu-jax, tpu-jax-inf2) were split out of this
 # repo — they live at github.com/xbill9/tpu-jax and .../tpu-jax-inf2.
 
-.PHONY: all help menu submodules install test lint format clean
+.PHONY: all help menu launch demos submodules install test lint format clean
 
 # Default target
 all: help
@@ -23,6 +23,8 @@ help:
 	@echo "======================================================================"
 	@echo "Available targets:"
 	@echo "  make menu         - Launch the interactive terminal menu (menu.py)"
+	@echo "  make launch       - Pick a project + demo and run it in its directory"
+	@echo "  make demos        - List every project and demo ./launch can run"
 	@echo "  make submodules   - Initialize and update git submodules"
 	@echo "  make install      - Install python dependencies in all sub-projects"
 	@echo "  make lint         - Run linters (ruff, mypy) across all sub-projects"
@@ -33,6 +35,13 @@ help:
 
 menu:
 	python3 menu.py
+
+# ARGS lets you skip the picker: make launch ARGS="tpu-12B 1"
+launch:
+	./launch $(ARGS)
+
+demos:
+	@./launch --list
 
 submodules:
 	@echo "Initializing and updating git submodules..."
