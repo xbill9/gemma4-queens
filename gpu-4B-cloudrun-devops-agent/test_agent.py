@@ -448,7 +448,7 @@ class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
         importlib.reload(server)
 
     async def test_resources_registered(self):
-        """Verify that the expected resources are registered with FastMCP."""
+        """Verify that the expected resources are registered with MCPServer."""
         resources = [str(r.uri) for r in await mcp.list_resources()]
         self.assertIn("config://vllm-deployment-template", resources)
 
