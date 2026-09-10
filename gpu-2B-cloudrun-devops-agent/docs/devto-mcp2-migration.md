@@ -3,7 +3,7 @@ title: "FastMCP Is Now MCPServer: Migrating a Python MCP Server to the MCP SDK 2
 published: false
 description: "Step-by-step: moving a FastMCP server to the MCP Python SDK 2.x — what broke, what changed, what did not, and a redeploy of its Gemma 4 vLLM backend to a Cloud Run L4 GPU."
 tags: mcp, python, googlecloud, vllm
-cover_image: https://raw.githubusercontent.com/xbill9/gemma4-queens/main/gpu-2B-cloudrun-devops-agent/docs/devto-cover.c43ff399.jpg
+cover_image: https://raw.githubusercontent.com/xbill9/gemma4-queens/main/gpu-2B-cloudrun-devops-agent/docs/devto-cover.5bbae7c1.jpg
 ---
 
 This article provides a step by step migration guide for a Python MCP server from the MCP Python SDK 1.x (`FastMCP`) to 2.x (`MCPServer`), followed by a step by step deployment of Gemma 4 E2B to a Cloud Run hosted GPU enabled system. A suite of Python MCP tools is built to simplify management of the vLLM hosted deployment.
