@@ -12,7 +12,7 @@ from server import mcp
 
 class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
     async def test_tools_registered(self):
-        """Verify that the expected tools are registered with FastMCP."""
+        """Verify that the expected tools are registered with MCPServer."""
         tools = [t.name for t in await mcp.list_tools()]
         self.assertIn("analyze_cloud_logging", tools)
         self.assertIn("suggest_sre_remediation", tools)
@@ -327,7 +327,7 @@ class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
         self.assertIn("running", result)
 
     async def test_resources_registered(self):
-        """Verify that the expected resources are registered with FastMCP."""
+        """Verify that the expected resources are registered with MCPServer."""
         resources = [str(r.uri) for r in await mcp.list_resources()]
         self.assertIn("config://vllm-deployment-template", resources)
 

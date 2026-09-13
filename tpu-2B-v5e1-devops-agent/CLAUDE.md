@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A single-file MCP server (`server.py`, FastMCP) that acts as a devops agent for serving Gemma 4
+A single-file MCP server (`server.py`, MCPServer) that acts as a devops agent for serving Gemma 4
 (`google/gemma-4-E2B-it`) with vLLM on a Google Cloud TPU v5e-1 Flex-start Queued Resource. Its tools shell
 out to `gcloud` and talk HTTP to the vLLM OpenAI-compatible endpoint on port 8000. This rig is used for
 **live demos** — prefer changes that keep the demo working over broad refactors.

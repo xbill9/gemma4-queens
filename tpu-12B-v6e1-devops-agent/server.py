@@ -9,7 +9,7 @@ from typing import Optional
 
 import httpx
 from google.cloud import secretmanager
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from openai import AsyncOpenAI
 
 # Setup logging
@@ -18,8 +18,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("vllm-devops-agent")
 
-# Initialize FastMCP server
-mcp = FastMCP("tpu-12B-v6e1-devops-agent")
+# Initialize MCPServer server
+mcp = MCPServer("tpu-12B-v6e1-devops-agent")
 
 # --- Configuration ---
 PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "aisprint-491218")

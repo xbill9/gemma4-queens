@@ -10,7 +10,7 @@ from typing import Optional
 
 import httpx
 from google.cloud import secretmanager
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from openai import AsyncOpenAI
 
 # Setup logging
@@ -19,8 +19,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger("vllm-devops-agent")
 
-# Initialize FastMCP server
-mcp = FastMCP("tpu-2B-v5e1-devops-agent")
+# Initialize MCPServer server
+mcp = MCPServer("tpu-2B-v5e1-devops-agent")
 
 # --- Configuration ---
 # tpu.env is the single source of truth for the deployment parameters. load_dotenv does

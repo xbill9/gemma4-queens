@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-An MCP server (`server.py`, FastMCP) exposing SRE/DevOps tools for a self-hosted Gemma 4 vLLM
+An MCP server (`server.py`, MCPServer) exposing SRE/DevOps tools for a self-hosted Gemma 4 vLLM
 service running on a **GCE VM** (`g2-standard-4`, one NVIDIA L4). The model is the QAT INT4
 checkpoint `google/gemma-4-E2B-it-qat-w4a16-ct`. Nearly every tool either shells out to `gcloud`
 or calls the vLLM endpoint over the OpenAI-compatible API.

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-An MCP server (`server.py`, FastMCP, ~2100 lines, 30 tools) that acts as an SRE/DevOps agent for
+An MCP server (`server.py`, MCPServer, ~2100 lines, 30 tools) that acts as an SRE/DevOps agent for
 self-hosting **Gemma 4 (`google/gemma-4-E4B-it`) on AWS Inferentia2 (`inf2`) EC2 instances**.
 
 **The directory name lies.** `gpu-4B-inf-devops-agent` is AWS Inferentia/Neuron — not GPU, not GCP.

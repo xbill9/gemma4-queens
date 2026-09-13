@@ -1,5 +1,4 @@
-mcp
-fastmcp
+mcp>=2,<3
 requests
 python-dotenv
 huggingface_hub

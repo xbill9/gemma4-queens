@@ -1,5 +1,4 @@
-mcp>=2
-fastmcp
+mcp>=2,<3
 google-cloud-logging
 requests
 google-adk

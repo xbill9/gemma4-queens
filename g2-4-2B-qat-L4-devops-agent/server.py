@@ -17,7 +17,7 @@ load_dotenv(override=True)
 
 from google.cloud import aiplatform, secretmanager, storage  # noqa: E402
 from google.cloud import logging as cloud_logging  # noqa: E402
-from mcp.server.fastmcp import FastMCP  # noqa: E402
+from mcp.server.mcpserver import MCPServer  # noqa: E402
 from openai import AsyncOpenAI  # noqa: E402
 
 # Setup logging to stderr ONLY to avoid interfering with MCP stdio communication
@@ -27,8 +27,8 @@ logging.basicConfig(
 logger = logging.getLogger("vllm-devops-agent")
 logger.info("Initializing DevOps Agent MCP Server...")
 
-# Initialize FastMCP server
-mcp = FastMCP("Self-Hosted vLLM DevOps Agent")
+# Initialize MCPServer server
+mcp = MCPServer("Self-Hosted vLLM DevOps Agent")
 
 # Load AWS credentials if .aws_creds exists
 aws_creds_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".aws_creds")

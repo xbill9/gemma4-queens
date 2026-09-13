@@ -102,7 +102,7 @@ PROJECTS = [
         model="google/gemma-4-12B-it  (bf16, no QAT)",
         endpoint="http://<node-ip>:8000  (discovered at runtime — never hardcoded)",
         blurb=(
-            "The big-model TPU rig. Same single-file FastMCP devops agent shape, but serving the "
+            "The big-model TPU rig. Same single-file MCPServer devops agent shape, but serving the "
             "dense 12B checkpoint on one Trillium chip — which makes it a memory-pressure project: "
             "bf16 weights eat ~24GB of the 32GB HBM, so the serving flags are load-bearing rather "
             "than defaults. Provisions Flex-start capacity, launches vLLM, discovers the endpoint "
@@ -499,7 +499,7 @@ COMMON = """One shape lives in this repo: operators.
 
 Every agent project follows the same shape:
 
-  server.py          single-file FastMCP server — the agent itself
+  server.py          single-file MCPServer server — the agent itself
   demo_launcher.py   the scripted "grand demo" (where present)
   Makefile           install / run / test / lint / deploy / destroy / status / endpoint / query
   README.md          requirements, env vars, tool catalog

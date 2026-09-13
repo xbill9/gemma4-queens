@@ -46,7 +46,7 @@ class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
     }
 
     async def test_tools_registered(self):
-        """Verify that exactly the expected tools are registered with FastMCP."""
+        """Verify that exactly the expected tools are registered with MCPServer."""
         tools = {t.name for t in await mcp.list_tools()}
         self.assertEqual(tools, self.EXPECTED_TOOLS)
 
@@ -118,7 +118,7 @@ class TestDevOpsAgent(unittest.IsolatedAsyncioTestCase):
         self.assertIn("34.1.2.3", result)
 
     async def test_resources_registered(self):
-        """Verify that the expected resources are registered with FastMCP."""
+        """Verify that the expected resources are registered with MCPServer."""
         resources = [str(r.uri) for r in await mcp.list_resources()]
         self.assertIn("config://vllm-deployment-template", resources)
 
