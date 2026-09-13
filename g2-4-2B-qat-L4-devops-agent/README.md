@@ -13,7 +13,7 @@ The MCP server expects a running vLLM instance. Your GCE VM deployment for the m
 
 ### 2. Agent Requirements (The MCP Server)
 *   **Runtime:** Python 3.13.
-*   **Libraries:** `mcp`, `fastmcp`, `google-cloud-logging`, `google-cloud-aiplatform`, `google-cloud-storage`, `google-adk`, `huggingface_hub`, `openai`, `httpx`, and `python-dotenv`.
+*   **Libraries:** `mcp` (2.x, `MCPServer`), `google-cloud-logging`, `google-cloud-aiplatform`, `google-cloud-storage`, `google-adk`, `huggingface_hub`, `openai`, `httpx`, and `python-dotenv`.
 *   **Permissions:** The service account running the agent needs:
     *   `logging.logEntries.list` (to read logs).
     *   `aiplatform.models.list` (to list Vertex AI models).

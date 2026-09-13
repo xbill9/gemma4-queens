@@ -16,7 +16,7 @@ The MCP server expects a running vLLM instance. Your Cloud Run deployment for th
 
 ### 2. Software & API Dependencies
 The agent relies on several Google Cloud services and Python libraries:
-*   **Libraries:** `mcp`, `fastmcp`, `google-cloud-logging`, `google-cloud-aiplatform`, `google-cloud-storage`, `google-adk`, `huggingface_hub`, and `requests`.
+*   **Libraries:** `mcp` (2.x, `MCPServer`), `google-cloud-logging`, `google-cloud-aiplatform`, `google-cloud-storage`, `google-adk`, `huggingface_hub`, and `requests`.
 *   **Permissions:** The service account running the agent needs:
     *   `logging.logEntries.list` (to read logs).
     *   `aiplatform.models.list` (to list Vertex AI models).

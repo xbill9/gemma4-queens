@@ -15,7 +15,7 @@ The MCP server expects a running vLLM instance. Your EC2 deployment for the mode
 
 ### 2. Software & API Dependencies
 The agent relies on AWS services and Python libraries:
-*   **Libraries:** `mcp`, `fastmcp`, `boto3`, `httpx`, `openai`, and `huggingface_hub`.
+*   **Libraries:** `mcp` (2.x, `MCPServer`), `boto3`, `httpx`, `openai`, and `huggingface_hub`.
 *   **Permissions:** The IAM credentials running the agent need:
     *   `cloudwatch:GetLogEvents` / `logs:FilterLogEvents` (to read logs).
     *   Access to read/write from the target S3 bucket.
